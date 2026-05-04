@@ -1,0 +1,9 @@
+[legacy] hello, named consumer
+  this class is in module: module zoo.consumer.named
+  helper class is in module: module zoo.legacy    (automatic — derived from JAR filename)
+
+[legacy] hello, classpath consumer
+  this class is in module: unnamed module @<hash>  (unnamed)
+  helper class is in module: unnamed module @<hash>
+
+zoo.legacy <jar-url> automatic

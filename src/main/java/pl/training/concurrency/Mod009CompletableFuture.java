@@ -1,0 +1,382 @@
+package pl.training.concurrency;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
+
+// =================================================================================================
+// Section 1: Promise vs Future
+// =================================================================================================
+
+/*
+## Promise vs Future
+
+- A `Future<V>` represents a value that will be available later. Java 5's `Future`
+exposes `get()`, `cancel()`, and `isDone()` — that is, you can wait, but you
+cannot **chain**. Composing two `Future`s requires a thread that blocks on the
+first one.
+- `CompletableFuture<V>` is a *promise*: a future you can complete from the
+outside (`complete`, `completeExceptionally`) and chain (`thenApply`,
+`thenCompose`, `thenCombine`, ...). Continuations are pushed; no thread sits
+blocked.
+- This unlocks declarative async pipelines: you describe the data flow once and
+the runtime schedules each stage on a worker as soon as its inputs are ready.
+*/
+
+// =================================================================================================
+// Section 2: Creating async pipelines
+// =================================================================================================
+
+/*
+## Creating async pipelines
+
+- `CompletableFuture.supplyAsync(supplier)` runs the supplier on the common
+ForkJoinPool and returns a future for its result.
+- `CompletableFuture.runAsync(runnable)` is the void variant.
+- Both have overloads that take an explicit `Executor`. **Always pass a custom
+executor** for blocking I/O — running blocking code on the common pool starves
+parallel streams and CompletableFuture chains used elsewhere in the JVM.
+*/
+
+// =================================================================================================
+// Section 3: Mapping vs flat-mapping (thenApply vs thenCompose)
+// =================================================================================================
+
+/*
+## Mapping vs flat-mapping (thenApply vs thenCompose)
+
+- `thenApply(Function<T, U>)` is the *map* operator — applies a synchronous
+function to the resolved value.
+- `thenCompose(Function<T, CompletableFuture<U>>)` is the *flat-map* operator —
+the function returns another future, and `thenCompose` flattens the result so
+you do not end up with `CompletableFuture<CompletableFuture<U>>`.
+- Rule of thumb: if the next step is itself an async call, use `thenCompose`. If
+it is a pure transformation, use `thenApply`.
+*/
+
+// =================================================================================================
+// Section 4: Combining
+// =================================================================================================
+
+/*
+## Combining
+
+- `thenCombine(other, BiFunction)` waits for both futures and combines their
+results. Like `zip`.
+- `allOf(f1, f2, ...)` returns `CompletableFuture<Void>` that completes when all
+inputs do. Read each individual `f.join()` afterwards to get the values.
+- `anyOf(...)` completes when the first input does, with that input's value.
+- `applyToEither(other, fn)` is the typed equivalent of `anyOf` for two futures
+of the same type.
+*/
+
+// =================================================================================================
+// Section 5: Error handling
+// =================================================================================================
+
+/*
+## Error handling
+
+- `exceptionally(Function<Throwable, T>)` recovers from a failure by producing a
+fallback value of the same type. Subsequent stages do not see the failure.
+- `handle(BiFunction<T, Throwable, U>)` runs in either case (success or
+failure) and lets you decide what to produce.
+- `whenComplete(BiConsumer<T, Throwable>)` is the listener form — it cannot
+change the value; useful for logging or metric emission.
+- An unhandled exception inside any stage propagates downstream wrapped in a
+`CompletionException`. Calling `get()` then throws `ExecutionException`; calling
+`join()` throws `CompletionException` (unchecked) — the latter is more pleasant
+for chaining.
+*/
+
+// =================================================================================================
+// Section 6: Timeouts
+// =================================================================================================
+
+/*
+## Timeouts
+
+- `orTimeout(t, unit)` (Java 9+) completes the future exceptionally with
+`TimeoutException` if it has not finished in time.
+- `completeOnTimeout(value, t, unit)` completes successfully with a fallback
+value instead.
+- Pre-Java 9 you had to wire your own timer via a `ScheduledExecutorService` —
+the `applyToEither` + scheduler trick. Today, prefer the built-ins.
+*/
+
+// =================================================================================================
+// Section 7: Retry with exponential backoff
+// =================================================================================================
+
+/*
+## Retry with exponential backoff
+
+- A common real-world need: retry an idempotent failing call a few times,
+doubling the delay between attempts.
+- The pattern: call the supplier; on `exceptionally`, schedule the next attempt
+on a `ScheduledExecutorService` and `thenCompose` to its result. Recurse until
+attempts are exhausted, then propagate the last failure.
+*/
+
+// =================================================================================================
+// Section 8: Real-world fan-out
+// =================================================================================================
+
+/*
+## Real-world fan-out
+
+- Frontend dashboards typically call several services in parallel and combine
+the answers. The natural shape is `supplyAsync` per service, then either
+`thenCombine` for two of them or `allOf` + `f.join()` for many.
+- Bonus: pin all stages to a dedicated `Executor` so a slow downstream cannot
+contend with the common pool.
+- Caveat: `CompletableFuture` does NOT propagate cancellation. Cancelling one
+sibling does not stop the others. Mod012 (`StructuredTaskScope`) is the modern
+fix.
+*/
+
+// =================================================================================================
+// Section 9: Limitations and forward-link to structured concurrency
+// =================================================================================================
+
+/*
+## Limitations and forward-link to structured concurrency
+
+- `cancel(true)` on a `CompletableFuture` only marks the future as cancelled —
+the running task is **not** interrupted, and pending parallel siblings continue.
+- A failure in one branch of a fan-out does not cancel the rest, so you keep
+paying for work whose result you will discard.
+- Chaining is opaque to thread dumps: a stage running on a common-pool worker
+does not show the call site that scheduled it.
+- For coordinated fan-out with all-or-nothing semantics, prefer
+`StructuredTaskScope` (Mod012). Use `CompletableFuture` for *async-event*
+plumbing (UI callbacks, message buses) where there is no natural parent task.
+*/
+
+public final class Mod009CompletableFuture {
+
+    private Mod009CompletableFuture() {}
+
+    private static final ScheduledExecutorService SCHEDULER =
+            Executors.newScheduledThreadPool(1, r -> Thread.ofPlatform().daemon(true).unstarted(r));
+
+    // --- Section 2: simple async pipeline ---
+    static void asyncPipeline() {
+        System.out.println("[Section 2] async pipeline");
+
+        var f = CompletableFuture.supplyAsync(() -> {
+            sleep(50);
+            return "data";
+        }).thenApply(s -> s.toUpperCase());
+
+        System.out.println("  result = " + f.join());
+    }
+
+    // --- Section 3: thenApply vs thenCompose ---
+    static void applyVsCompose() {
+        System.out.println("[Section 3] thenApply vs thenCompose");
+
+        // thenApply with an async-returning function — produces a NESTED future.
+        CompletableFuture<CompletableFuture<String>> nested = CompletableFuture
+                .supplyAsync(() -> 42L)
+                .thenApply(Mod009CompletableFuture::fetchUser);
+        System.out.println("  nested needs two joins: " + nested.join().join());
+
+        // thenCompose flattens it.
+        CompletableFuture<String> flat = CompletableFuture
+                .supplyAsync(() -> 42L)
+                .thenCompose(Mod009CompletableFuture::fetchUser);
+        System.out.println("  flat = " + flat.join());
+    }
+
+    // --- Section 4: combining ---
+    static void combining() {
+        System.out.println("[Section 4] combining");
+
+        var profile = CompletableFuture.supplyAsync(() -> { sleep(40); return "alice"; });
+        var orders  = CompletableFuture.supplyAsync(() -> { sleep(60); return List.of("o-1", "o-2"); });
+
+        // Two-future zip.
+        var combined = profile.thenCombine(orders, (p, o) -> p + " -> " + o);
+        System.out.println("  thenCombine: " + combined.join());
+
+        // Many-future barrier.
+        var f1 = CompletableFuture.supplyAsync(() -> "A");
+        var f2 = CompletableFuture.supplyAsync(() -> "B");
+        var f3 = CompletableFuture.supplyAsync(() -> "C");
+        CompletableFuture.allOf(f1, f2, f3).join();
+        System.out.println("  allOf: " + f1.join() + ", " + f2.join() + ", " + f3.join());
+
+        // Race.
+        var fast = CompletableFuture.supplyAsync(() -> { sleep(20); return "fast"; });
+        var slow = CompletableFuture.supplyAsync(() -> { sleep(200); return "slow"; });
+        System.out.println("  applyToEither: " + fast.applyToEither(slow, x -> x).join());
+    }
+
+    // --- Section 5: error handling ---
+    static void errorHandling() {
+        System.out.println("[Section 5] error handling");
+
+        var failing = CompletableFuture.<String>supplyAsync(() -> {
+            throw new RuntimeException("downstream is down");
+        });
+
+        // exceptionally — recover with a fallback.
+        var recovered = failing.exceptionally(t -> "fallback:" + t.getMessage());
+        System.out.println("  exceptionally: " + recovered.join());
+
+        // handle — runs always, lets us decide what to produce.
+        var handled = failing.handle((value, error) ->
+                error != null ? "handled-error" : value.toUpperCase());
+        System.out.println("  handle:        " + handled.join());
+
+        // whenComplete — listener-only, cannot change the value.
+        try {
+            failing.whenComplete((value, error) -> {
+                if (error != null) System.out.println("  whenComplete saw: " + error.getMessage());
+            }).join();
+        } catch (Exception e) {
+            System.out.println("  whenComplete propagated: " + e.getClass().getSimpleName());
+        }
+    }
+
+    // --- Section 6: timeouts ---
+    static void timeouts() {
+        System.out.println("[Section 6] timeouts");
+
+        // (a) orTimeout — fails with TimeoutException.
+        var slow = CompletableFuture.supplyAsync(() -> { sleep(200); return "late"; })
+                .orTimeout(50, TimeUnit.MILLISECONDS)
+                .exceptionally(t -> "fallback (orTimeout: " + t.getClass().getSimpleName() + ")");
+        System.out.println("  " + slow.join());
+
+        // (b) completeOnTimeout — succeeds with a fallback value.
+        var slow2 = CompletableFuture.supplyAsync(() -> { sleep(200); return "late"; })
+                .completeOnTimeout("cached", 50, TimeUnit.MILLISECONDS);
+        System.out.println("  " + slow2.join());
+    }
+
+    // --- Section 7: retry with exponential backoff ---
+    static void retryWithBackoff() {
+        System.out.println("[Section 7] retry with exponential backoff");
+
+        var attempts = new AtomicInteger();
+        Supplier<CompletableFuture<String>> flaky = () -> CompletableFuture.supplyAsync(() -> {
+            int n = attempts.incrementAndGet();
+            if (n < 3) throw new RuntimeException("attempt " + n + " failed");
+            return "attempt " + n + " succeeded";
+        });
+
+        var result = retry(flaky, 5, Duration.ofMillis(20));
+        System.out.println("  " + result.join());
+    }
+
+    static CompletableFuture<String> retry(Supplier<CompletableFuture<String>> op,
+                                           int attemptsLeft, Duration delay) {
+        return op.get().thenApply(CompletableFuture::completedFuture)
+                .exceptionally(t -> {
+                    if (attemptsLeft <= 1) {
+                        return CompletableFuture.failedFuture(t);
+                    }
+                    var next = new CompletableFuture<String>();
+                    SCHEDULER.schedule(
+                            () -> retry(op, attemptsLeft - 1, delay.multipliedBy(2))
+                                    .whenComplete((v, e) -> {
+                                        if (e == null) next.complete(v);
+                                        else next.completeExceptionally(e);
+                                    }),
+                            delay.toMillis(), TimeUnit.MILLISECONDS);
+                    return next;
+                })
+                .thenCompose(x -> x);
+    }
+
+    // --- Section 8: real-world fan-out (dashboard) ---
+    static void dashboardFanOut() {
+        System.out.println("[Section 8] dashboard fan-out");
+
+        long t0 = System.nanoTime();
+
+        var profile = CompletableFuture.supplyAsync(() -> { sleep(80); return "alice"; });
+        var orders  = CompletableFuture.supplyAsync(() -> { sleep(120); return List.of("o-1", "o-2"); });
+        var recos   = CompletableFuture.supplyAsync(() -> { sleep(70); return List.of("r-1", "r-2", "r-3"); });
+
+        var dashboard = CompletableFuture.allOf(profile, orders, recos)
+                .thenApply(v -> "User=" + profile.join()
+                        + ", orders=" + orders.join()
+                        + ", recommendations=" + recos.join());
+
+        System.out.println("  " + dashboard.join());
+        System.out.println("  total wall time = "
+                + ((System.nanoTime() - t0) / 1_000_000) + " ms (≈ slowest branch)");
+    }
+
+    // --- Section 9: cancellation does NOT propagate ---
+    static void cancellationDoesNotPropagate() {
+        System.out.println("[Section 9] cancellation does NOT propagate");
+
+        var ran = new AtomicInteger();
+        var siblings = Stream.of(80, 120, 60).map(delay ->
+                CompletableFuture.runAsync(() -> {
+                    sleep(delay);
+                    ran.incrementAndGet();
+                })).toList();
+
+        // Cancel the first one — but the running task is NOT interrupted, the others run on.
+        siblings.get(0).cancel(true);
+        try {
+            CompletableFuture.allOf(siblings.toArray(CompletableFuture[]::new)).join();
+        } catch (Exception e) {
+            // expected: the cancelled future causes a CancellationException in the allOf composite.
+        }
+        sleep(150); // wait for the still-running tasks to finish
+        System.out.println("  tasks that actually finished = " + ran.get()
+                + " (cancellation did not stop the running siblings; see Mod012)");
+    }
+
+    private static CompletableFuture<String> fetchUser(long id) {
+        return CompletableFuture.supplyAsync(() -> "user-" + id);
+    }
+
+    private static void sleep(long ms) {
+        try { Thread.sleep(ms); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
+    public static void main(String[] args) throws ExecutionException, InterruptedException {
+        try {
+            asyncPipeline();
+            applyVsCompose();
+            combining();
+            errorHandling();
+            timeouts();
+            retryWithBackoff();
+            dashboardFanOut();
+            cancellationDoesNotPropagate();
+        } catch (Exception e) {
+            // surface unexpected failures
+            e.printStackTrace();
+        }
+        SCHEDULER.shutdown();
+        System.out.println("Mod009CompletableFuture finished");
+    }
+
+    @SuppressWarnings("unused")
+    private static void exampleTimeout() {
+        // For reference: pre-Java 9 timeout via applyToEither + scheduler.
+        var slow = CompletableFuture.supplyAsync(() -> { sleep(5_000); return "late"; });
+        var timer = new CompletableFuture<String>();
+        SCHEDULER.schedule(
+                () -> timer.completeExceptionally(new TimeoutException("timed out")),
+                100, TimeUnit.MILLISECONDS);
+        slow.applyToEither(timer, x -> x).exceptionally(t -> "fallback").join();
+    }
+}

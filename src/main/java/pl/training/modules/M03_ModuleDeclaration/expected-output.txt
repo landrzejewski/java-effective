@@ -1,0 +1,7 @@
+    ✓ compile failed as expected (qualified-exports enforcement works)
+[staff] script: Welcome to the lion talk!
+[staff] recording: Recording[title=daily-briefing, seconds=120]
+[staff] schedule: 10:00 - 10:15 — penguin talk
+[staff] reflective: Slot[morning]
+[guest] Recording[title=welcome-video, seconds=30]
+[guest] 10:00 - 10:15 — penguin talk

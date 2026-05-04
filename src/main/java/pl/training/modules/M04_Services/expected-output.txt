@@ -1,0 +1,2 @@
+- 'Adventure'  : 90 min  → souvenir: 'T-Shirt'
+- 'Quiet Walk' : 30 min  → souvenir: 'Postcard'
