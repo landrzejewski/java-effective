@@ -9,138 +9,23 @@ import java.util.concurrent.StructuredTaskScope.Joiner;
 import java.util.concurrent.StructuredTaskScope.Subtask;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// =================================================================================================
-// Section 1: The unstructured-concurrency problem
-// =================================================================================================
-
 /*
-## The unstructured-concurrency problem
-
-- A `CompletableFuture` chain that fans out to N services has no enclosing
-"task" object. Each branch lives independently:
-  - If one branch throws, the others **keep running** and continue to consume
-    threads, sockets, DB rows.
-  - Cancelling one future does not propagate; siblings cannot be told to stop.
-  - Stack traces of inner stages do not point back to the call site that
-    submitted them — they show the executor worker, period.
-- This pattern leaks resources and makes failure handling fragile.
-*Structured concurrency* (JEP 505, fifth preview in Java 25) attaches a
-parent–child relationship between a coordinating task and its sub-tasks, so
-the lifetime of the children is bounded by the lifetime of the parent.
-*/
-
-// =================================================================================================
-// Section 2: Mental model
-// =================================================================================================
-
-/*
-## Mental model
+Mental model
 
 The shape of a structured fan-out:
 
-```
 parent task                      open scope ─┐
   │                                          │
-  ├─ fork sub-task A (virtual thread)         │ all children's lifetimes
-  ├─ fork sub-task B (virtual thread)         │ are bounded by the scope
-  ├─ fork sub-task C (virtual thread)         │
+  ├─ fork sub-task A (virtual thread)        │ all children's lifetimes
+  ├─ fork sub-task B (virtual thread)        │ are bounded by the scope
+  ├─ fork sub-task C (virtual thread)        │
   │                                          │
   └─ scope.join()  ←──── waits for all ──────┘
        (or until the joiner short-circuits)
-```
 
-Closing the scope (try-with-resources) cancels any still-running children. If
-the parent itself is cancelled (because *its* parent scope cancelled it), the
-cancellation propagates downwards. The whole tree is structurally enclosed —
-there are no orphans.
-*/
-
-// =================================================================================================
-// Section 3: StructuredTaskScope.open() — basic shape
-// =================================================================================================
-
-/*
-## StructuredTaskScope.open() — basic shape
-
-```java
-try (var scope = StructuredTaskScope.open()) {
-    var a = scope.fork(() -> fetchProfile());
-    var b = scope.fork(() -> fetchOrders());
-    scope.join();                   // waits for ALL forks to finish
-    var profile = a.get();
-    var orders  = b.get();
-}
-```
-
-- `fork(Callable)` returns a `Subtask<T>`. Reading `subtask.get()` before
-`scope.join()` returns is illegal.
-- `scope.join()` blocks until every forked subtask has finished or the joiner
-short-circuits (see §4).
-- The try-with-resources `close()` makes sure that even if `join()` is skipped
-(e.g., an exception jumps over it), every still-running subtask is cancelled
-before the try block exits.
-- Each `fork` creates a virtual thread by default — see §9.
-*/
-
-// =================================================================================================
-// Section 4: Joiner.allSuccessfulOrThrow — invariant fan-out
-// =================================================================================================
-
-/*
-## Joiner.allSuccessfulOrThrow — invariant fan-out
-
-- All sub-tasks must succeed; the first failure cancels the rest.
-- `scope.join()` returns a `Stream<Subtask<T>>` of the successful sub-tasks
-in completion order.
-- This is the dashboard / aggregation pattern: load all the pieces; if any
-piece is broken, fail the entire request and free the in-flight resources.
-*/
-
-// =================================================================================================
-// Section 5: Joiner.anySuccessfulResultOrThrow — race / first wins
-// =================================================================================================
-
-/*
-## Joiner.anySuccessfulResultOrThrow — race / first wins
-
-- Several sub-tasks compute the same answer in parallel; the first to return
-wins, the others are cancelled immediately.
-- `scope.join()` returns the value directly (typed `T`).
-- If every sub-task fails, `join()` throws with the last exception as the
-cause.
-- Use case: redundant providers (two DNS resolvers, several mirror caches),
-adaptive timeouts, or fastest-replica reads.
-*/
-
-// =================================================================================================
-// Section 6: Joiner.allUntil(predicate) — partial fan-out
-// =================================================================================================
-
-/*
-## Joiner.allUntil(predicate) — partial fan-out
-
-- Wait for all sub-tasks **until** a user predicate returns true. A common case:
-"send 10 mirror queries, stop and return as soon as 3 of them return".
-- `join()` returns a `Stream<Subtask<T>>` of sub-tasks in the order they
-completed; calls `subtask.get()` (or `state()`) safely.
-- The predicate is called every time a sub-task finishes; the running siblings
-are cancelled when it first returns true.
-*/
-
-// =================================================================================================
-// Section 7: Custom joiner
-// =================================================================================================
-
-/*
-## Custom joiner
-
-- Joiners are an open SPI: implement `Joiner<T, R>`:
-  - `onComplete(Subtask<? extends T>)` — called when a sub-task ends. Return
-    true to short-circuit (cancel the scope), false to keep collecting.
-  - `result()` — produces the final aggregated value returned by `scope.join()`.
-- The example below is `BestEffortJoiner<T>`: it collects every successful
-sub-task and silently ignores failures. The shape mirrors how a Kafka-style
-"fan-out, accept what we got" stage is built.
+Closing the scope (try-with-resources) cancels any still-running children. If the parent itself is cancelled
+(because its parent scope cancelled it), the cancellation propagates downwards. The whole tree is structurally
+enclosed — there are no orphans.
 */
 
 final class BestEffortJoiner<T> implements Joiner<T, List<T>> {
@@ -152,58 +37,6 @@ final class BestEffortJoiner<T> implements Joiner<T, List<T>> {
     @Override public List<T> result() { return new ArrayList<>(ok); }
 }
 
-// =================================================================================================
-// Section 8: Cancellation propagation
-// =================================================================================================
-
-/*
-## Cancellation propagation
-
-- When the joiner short-circuits (e.g., one branch threw under
-`allSuccessfulOrThrow`), the scope sends an interrupt to every still-running
-sub-task.
-- A sub-task that is currently in `Thread.sleep`, `Object.wait`, a `BlockingQueue`
-operation, or any other JDK blocking call is woken up with
-`InterruptedException`. A pure CPU-bound sub-task is responsible for checking
-`Thread.currentThread().isInterrupted()`.
-- This is the single biggest qualitative win over `CompletableFuture`: failure
-in one branch immediately stops every other branch, so the request returns
-quickly and stops paying for work whose result will be thrown away.
-*/
-
-// =================================================================================================
-// Section 9: Composition with virtual threads
-// =================================================================================================
-
-/*
-## Composition with virtual threads
-
-- `scope.fork(Callable)` creates a virtual thread for the sub-task by default —
-the same kind covered in `Mod011VirtualThreads`.
-- That makes structured concurrency the natural API for a server that wants to
-fan out N parallel calls per request: each call gets its own (cheap) virtual
-thread, the scope manages their lifetime, and back-pressure is implicit.
-- A `StructuredTaskScope` can be customised to use platform threads via
-`StructuredTaskScope.open(Joiner, Configuration -> ...)`, but the default is
-fine for almost every workload.
-*/
-
-// =================================================================================================
-// Section 10: Comparison with CompletableFuture
-// =================================================================================================
-
-/*
-## Comparison with CompletableFuture
-
-| Aspect                       | CompletableFuture          | StructuredTaskScope     |
-|------------------------------|----------------------------|-------------------------|
-| Fan-out / fan-in             | `allOf` + `join()` per branch | `fork` + `join()`     |
-| Cancellation propagation     | NO (Mod009 §9)             | YES — sibling-aware     |
-| Exception aggregation        | manual                     | automatic via joiner    |
-| Stack traces                 | severed at executor boundary | preserved (synchronous shape) |
-| Best for                     | event-driven, callbacks    | request-bounded fan-out |
-*/
-
 public final class Mod012StructuredConcurrency {
 
     private Mod012StructuredConcurrency() {}
@@ -214,7 +47,19 @@ public final class Mod012StructuredConcurrency {
     private static List<String> fetchRecos()     { sleep(70);  return List.of("r-1", "r-2", "r-3"); }
     private static String fetchProfileFailing()  { sleep(40);  throw new RuntimeException("profile down"); }
 
-    // --- Section 1: the unstructured problem with CompletableFuture ---
+    /*
+    The unstructured-concurrency problem
+
+    - A CompletableFuture chain that fans out to N services has no enclosing "task" object. Each branch lives
+      independently:
+      - If one branch throws, the others keep running and continue to consume threads, sockets, DB rows.
+      - Cancelling one future does not propagate; siblings cannot be told to stop.
+      - Stack traces of inner stages do not point back to the call site that submitted them — they show the executor
+        worker, period.
+    - This pattern leaks resources and makes failure handling fragile. Structured concurrency (JEP 505, fifth preview
+      in Java 25) attaches a parent–child relationship between a coordinating task and its sub-tasks, so the lifetime
+      of the children is bounded by the lifetime of the parent.
+    */
     static void unstructuredProblem() {
         System.out.println("[Section 1] unstructured-concurrency problem");
 
@@ -230,7 +75,23 @@ public final class Mod012StructuredConcurrency {
                 + " (cancellation did not propagate)");
     }
 
-    // --- Section 3: basic open() shape ---
+    /*
+    StructuredTaskScope.open() — basic shape
+
+    try (var scope = StructuredTaskScope.open()) {
+        var a = scope.fork(() -> fetchProfile());
+        var b = scope.fork(() -> fetchOrders());
+        scope.join();                   // waits for ALL forks to finish
+        var profile = a.get();
+        var orders  = b.get();
+    }
+
+    - fork(Callable) returns a Subtask<T>. Reading subtask.get() before scope.join() returns is illegal.
+    - scope.join() blocks until every forked subtask has finished or the joiner short-circuits (see §4).
+    - The try-with-resources close() makes sure that even if join() is skipped (e.g., an exception jumps over it),
+      every still-running subtask is cancelled before the try block exits.
+    - Each fork creates a virtual thread by default — see §9.
+    */
     static void basicScope() throws InterruptedException {
         System.out.println("[Section 3] StructuredTaskScope.open() — dashboard fan-out");
 
@@ -249,7 +110,14 @@ public final class Mod012StructuredConcurrency {
         System.out.println("  wall time = " + ((System.nanoTime() - t0) / 1_000_000) + " ms");
     }
 
-    // --- Section 4: allSuccessfulOrThrow — failure cancels siblings ---
+    /*
+    Joiner.allSuccessfulOrThrow — invariant fan-out
+
+    - All sub-tasks must succeed; the first failure cancels the rest.
+    - scope.join() returns a Stream<Subtask<T>> of the successful sub-tasks in completion order.
+    - This is the dashboard / aggregation pattern: load all the pieces; if any piece is broken, fail the entire
+      request and free the in-flight resources.
+    */
     static void allSuccessfulOrThrow() throws InterruptedException {
         System.out.println("[Section 4] Joiner.allSuccessfulOrThrow");
 
@@ -274,7 +142,16 @@ public final class Mod012StructuredConcurrency {
                 + " ms (≈ first-failure time, NOT max sibling time)");
     }
 
-    // --- Section 5: anySuccessfulResultOrThrow — race ---
+    /*
+    Joiner.anySuccessfulResultOrThrow — race / first wins
+
+    - Several sub-tasks compute the same answer in parallel; the first to return wins, the others are cancelled
+      immediately.
+    - scope.join() returns the value directly (typed T).
+    - If every sub-task fails, join() throws with the last exception as the cause.
+    - Use case: redundant providers (two DNS resolvers, several mirror caches), adaptive timeouts, or fastest-replica
+      reads.
+    */
     static void anySuccessfulRace() throws InterruptedException {
         System.out.println("[Section 5] Joiner.anySuccessfulResultOrThrow");
 
@@ -288,7 +165,16 @@ public final class Mod012StructuredConcurrency {
         }
     }
 
-    // --- Section 6: allUntil predicate ---
+    /*
+    Joiner.allUntil(predicate) — partial fan-out
+
+    - Wait for all sub-tasks until a user predicate returns true. A common case: "send 10 mirror queries, stop and
+      return as soon as 3 of them return".
+    - join() returns a Stream<Subtask<T>> of sub-tasks in the order they completed; calls subtask.get() (or state())
+      safely.
+    - The predicate is called every time a sub-task finishes; the running siblings are cancelled when it first
+      returns true.
+    */
     static void allUntilPredicate() throws InterruptedException {
         System.out.println("[Section 6] Joiner.allUntil(predicate)");
 
@@ -311,7 +197,16 @@ public final class Mod012StructuredConcurrency {
         }
     }
 
-    // --- Section 7: custom BestEffortJoiner ---
+    /*
+    Custom joiner
+
+    - Joiners are an open SPI: implement Joiner<T, R>:
+      - onComplete(Subtask<? extends T>) — called when a sub-task ends. Return true to short-circuit (cancel the
+        scope), false to keep collecting.
+      - result() — produces the final aggregated value returned by scope.join().
+    - The example below is BestEffortJoiner<T>: it collects every successful sub-task and silently ignores failures.
+      The shape mirrors how a Kafka-style "fan-out, accept what we got" stage is built.
+    */
     static void customBestEffortJoiner() throws InterruptedException {
         System.out.println("[Section 7] custom BestEffortJoiner");
 
@@ -324,7 +219,17 @@ public final class Mod012StructuredConcurrency {
         }
     }
 
-    // --- Section 8: cancellation propagation ---
+    /*
+    Cancellation propagation
+
+    - When the joiner short-circuits (e.g., one branch threw under allSuccessfulOrThrow), the scope sends an
+      interrupt to every still-running sub-task.
+    - A sub-task that is currently in Thread.sleep, Object.wait, a BlockingQueue operation, or any other JDK blocking
+      call is woken up with InterruptedException. A pure CPU-bound sub-task is responsible for checking
+      Thread.currentThread().isInterrupted().
+    - This is the single biggest qualitative win over CompletableFuture: failure in one branch immediately stops
+      every other branch, so the request returns quickly and stops paying for work whose result will be thrown away.
+    */
     static void cancellationPropagation() throws InterruptedException {
         System.out.println("[Section 8] cancellation propagation");
 
@@ -347,12 +252,22 @@ public final class Mod012StructuredConcurrency {
         System.out.println("  total wall time = " + ms + " ms (NOT 10 000 ms)");
     }
 
-    // --- Section 9: virtual-thread composition ---
+    /*
+    Composition with virtual threads
+
+    - scope.fork(Callable) creates a virtual thread for the sub-task by default — the same kind covered in
+      Mod011VirtualThreads.
+    - That makes structured concurrency the natural API for a server that wants to fan out N parallel calls per
+      request: each call gets its own (cheap) virtual thread, the scope manages their lifetime, and back-pressure is
+      implicit.
+    - A StructuredTaskScope can be customised to use platform threads via
+      StructuredTaskScope.open(Joiner, Configuration -> ...), but the default is fine for almost every workload.
+    */
     static void virtualThreadComposition() throws InterruptedException {
         System.out.println("[Section 9] virtual-thread composition");
 
         var virtualCount = new AtomicInteger();
-        try (var scope = StructuredTaskScope.open(Joiner.<Integer>awaitAllSuccessfulOrThrow())) {
+        try (var scope = StructuredTaskScope.open(Joiner.<Integer>allSuccessfulOrThrow())) {
             for (int i = 0; i < 1000; i++) {
                 final int id = i;
                 scope.fork(() -> {
@@ -366,7 +281,17 @@ public final class Mod012StructuredConcurrency {
         System.out.println("  virtual-thread sub-tasks = " + virtualCount.get() + " / 1000");
     }
 
-    // --- Section 10: comparison head-to-head ---
+    /*
+    Comparison with CompletableFuture
+
+      Aspect                       CompletableFuture               StructuredTaskScope
+      ---------------------------- ------------------------------- ----------------------------
+      Fan-out / fan-in             allOf + join() per branch       fork + join()
+      Cancellation propagation     NO (Mod009 §9)                  YES — sibling-aware
+      Exception aggregation        manual                          automatic via joiner
+      Stack traces                 severed at executor boundary    preserved (synchronous shape)
+      Best for                     event-driven, callbacks         request-bounded fan-out
+    */
     static void comparisonHeadToHead() throws InterruptedException {
         System.out.println("[Section 10] CompletableFuture vs StructuredTaskScope");
 

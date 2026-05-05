@@ -1,4 +1,4 @@
-package pl.training.modules.M04_Services.zoo.tours.api.zoo.tours.api;
+package zoo.tours.api;
 
 public interface Tour {
     String name();

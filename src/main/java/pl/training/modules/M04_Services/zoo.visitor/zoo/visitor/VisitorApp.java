@@ -1,7 +1,7 @@
-package pl.training.modules.M04_Services.zoo.visitor.zoo.visitor;
+package zoo.visitor;
 
 import java.util.ServiceLoader;
-import pl.training.modules.M04_Services.zoo.tours.api.zoo.tours.api.Tour;
+import zoo.tours.api.Tour;
 
 public class VisitorApp {
     public static void main(String... args) {

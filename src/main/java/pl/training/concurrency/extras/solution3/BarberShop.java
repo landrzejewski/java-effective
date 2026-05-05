@@ -1,11 +1,8 @@
 package pl.training.concurrency.extras.solution3;
 
-import lombok.RequiredArgsConstructor;
-
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.ReentrantLock;
 
-@RequiredArgsConstructor
 public class BarberShop {
 
     private final Semaphore waitForCustomerToEnter = new Semaphore(0);
@@ -17,6 +14,10 @@ public class BarberShop {
 
     private int waitingCustomers = 0;
     private int hairCutsGiven = 0;
+
+    public BarberShop(int chairs) {
+        this.chairs = chairs;
+    }
 
 
     void customerWalksIn() throws InterruptedException {

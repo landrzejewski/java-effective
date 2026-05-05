@@ -3,132 +3,34 @@ package pl.training.dsl;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// =================================================================================================
-// Section 1: The "builder forgot a required field" bug
-// =================================================================================================
-
 /*
-## The "builder forgot a required field" bug
+The "builder forgot a required field" bug
 
-- A classic Builder lets you call `.build()` regardless of which fields
-have been set. Defensive checks in `build()` push the error to runtime
-and force the user to write a fresh `try/catch` or read API docs to
-remember which fields are required.
-- A *type-state-safe* builder encodes the build progress in the type
-system: `.build()` (or here, `.send()`) is **declared only on a fully
-configured type parameterisation**. Forgetting a required field becomes a
-compile error, not a runtime exception.
-- This pattern is common in production SDKs: AWS SDK v2's request
-builders, Mockito's `when(...)` chain, OkHttp's `Request.Builder` (in
-spirit; the real one uses runtime checks but the idiom is identical).
-*/
+- A classic Builder lets you call .build() regardless of which fields have been set. Defensive checks in build()
+  push the error to runtime and force the user to write a fresh try/catch or read API docs to remember which fields
+  are required.
+- A type-state-safe builder encodes the build progress in the type system: .build() (or here, .send()) is declared
+  only on a fully configured type parameterisation. Forgetting a required field becomes a compile error, not a
+  runtime exception.
+- This pattern is common in production SDKs: AWS SDK v2's request builders, Mockito's when(...) chain, OkHttp's
+  Request.Builder (in spirit; the real one uses runtime checks but the idiom is identical).
 
-// =================================================================================================
-// Section 2: Type-state pattern
-// =================================================================================================
+Sealed marker interfaces
 
-/*
-## Type-state pattern
+- sealed interface State permits Missing, Present {} declares the universe of marker types. Sealing forbids users
+  from inventing their own State implementations and bypassing the safety.
+- Each marker is an empty final class; it has no instances at all (we never new Present()), it lives only in the
+  type system.
+- For larger DSLs you can have more states: Empty, WithUrl, WithUrlAndMethod, ... — same pattern, more parameters.
 
-- Model "is the URL set yet?" and "is the method set yet?" with marker
-types `Missing` and `Present`.
-- The builder carries them as phantom type parameters
-`HttpRequestBuilder<UrlState, MethodState>`.
-- Setting a field returns a builder with the corresponding type parameter
-flipped to `Present`.
-- The runtime payload is unchanged; only the type tells the next reader
-what is allowed.
-*/
+Trade-off note
 
-// =================================================================================================
-// Section 3: Sealed marker interfaces
-// =================================================================================================
-
-/*
-## Sealed marker interfaces
-
-- `sealed interface State permits Missing, Present {}` declares the
-universe of marker types. Sealing forbids users from inventing their own
-`State` implementations and bypassing the safety.
-- Each marker is an empty `final class`; it has no instances at all (we
-never `new Present()`), it lives only in the type system.
-- For larger DSLs you can have more states: `Empty`, `WithUrl`,
-`WithUrlAndMethod`, ... — same pattern, more parameters.
-*/
-
-// =================================================================================================
-// Section 4: The HTTP builder
-// =================================================================================================
-
-/*
-## The HTTP builder
-
-Required fields: URL, method.
-Optional fields: headers, body.
-
-```java
-HttpRequest request = HttpRequest.builder()    // <Missing, Missing>
-        .url("https://api.example.com/x")      // <Present, Missing>
-        .method("POST")                        // <Present, Present>
-        .header("Content-Type", "application/json")
-        .body("{...}")
-        .send();
-```
-
-The signature of each method tracks the build state advancing. `.send()`
-is declared on `HttpRequestBuilder<Present, Present>` only.
-*/
-
-// =================================================================================================
-// Section 5: What you cannot do
-// =================================================================================================
-
-/*
-## What you cannot do
-
-The lines below are intentionally rejected by the compiler. They are kept
-as comments inside the example so the reader sees what would fail and why.
-
-```java
-HttpRequest.builder().send();                 // ✗ url & method missing
-HttpRequest.builder().url("/x").send();       // ✗ method missing
-HttpRequest.builder().method("GET").send();   // ✗ url missing
-```
-
-The compile errors talk about types ("method `send` not found in
-`HttpRequestBuilder<Missing, Present>`"), not about runtime contracts.
-That is the whole pay-off.
-*/
-
-// =================================================================================================
-// Section 6: End-to-end
-// =================================================================================================
-
-/*
-## End-to-end
-
-- Build a `GET https://api.example.com/users/42`.
-- Build a `POST https://api.example.com/users` with a JSON body and a
-custom header.
-- Run both through `.send()` (which here just renders the request as
-text) and verify the rendered output against an expected reference.
-*/
-
-// =================================================================================================
-// Section 7: Trade-off note
-// =================================================================================================
-
-/*
-## Trade-off note
-
-- Phantom-type builders make compile errors loud but add type-parameter
-noise. The user has to read `HttpRequestBuilder<Present, Missing>` in
-error messages.
-- Worth it for SDKs and libraries used by hundreds of consumers; rarely
-worth it for an in-app one-off builder. For one-offs, prefer a runtime
-check with a clear exception message.
-- Mid-ground: add a single phantom parameter for the most error-prone
-field (e.g., `urlSet`) and keep the rest as runtime checks.
+- Phantom-type builders make compile errors loud but add type-parameter noise. The user has to read
+  HttpRequestBuilder<Present, Missing> in error messages.
+- Worth it for SDKs and libraries used by hundreds of consumers; rarely worth it for an in-app one-off builder. For
+  one-offs, prefer a runtime check with a clear exception message.
+- Mid-ground: add a single phantom parameter for the most error-prone field (e.g., urlSet) and keep the rest as
+  runtime checks.
 */
 
 public final class Mod008PhantomTypeBuilderDsl {
@@ -221,6 +123,14 @@ public final class Mod008PhantomTypeBuilderDsl {
     // Sections
     // =================================================================================================
 
+    /*
+    Type-state pattern
+
+    - Model "is the URL set yet?" and "is the method set yet?" with marker types Missing and Present.
+    - The builder carries them as phantom type parameters HttpRequestBuilder<UrlState, MethodState>.
+    - Setting a field returns a builder with the corresponding type parameter flipped to Present.
+    - The runtime payload is unchanged; only the type tells the next reader what is allowed.
+    */
     static void typeStatePattern() {
         System.out.println("[Section 2] type-state advancing call by call");
 
@@ -237,6 +147,22 @@ public final class Mod008PhantomTypeBuilderDsl {
         System.out.println("  send(b2) -> " + send(b2).render().lines().findFirst().orElseThrow());
     }
 
+    /*
+    The HTTP builder
+
+    Required fields: URL, method.
+    Optional fields: headers, body.
+
+    HttpRequest request = HttpRequest.builder()    // <Missing, Missing>
+            .url("https://api.example.com/x")      // <Present, Missing>
+            .method("POST")                        // <Present, Present>
+            .header("Content-Type", "application/json")
+            .body("{...}")
+            .send();
+
+    The signature of each method tracks the build state advancing. .send() is declared on
+    HttpRequestBuilder<Present, Present> only.
+    */
     static void httpBuilderDemo() {
         System.out.println("[Section 4] HTTP builder happy path");
         var req = send(request()
@@ -247,6 +173,19 @@ public final class Mod008PhantomTypeBuilderDsl {
         req.render().lines().forEach(l -> System.out.println("    " + l));
     }
 
+    /*
+    What you cannot do
+
+    The lines below are intentionally rejected by the compiler. They are kept as comments inside the example so the
+    reader sees what would fail and why.
+
+    HttpRequest.builder().send();                 // ✗ url & method missing
+    HttpRequest.builder().url("/x").send();       // ✗ method missing
+    HttpRequest.builder().method("GET").send();   // ✗ url missing
+
+    The compile errors talk about types ("method send not found in HttpRequestBuilder<Missing, Present>"), not about
+    runtime contracts. That is the whole pay-off.
+    */
     static void whatYouCannotDo() {
         System.out.println("[Section 5] what would NOT compile");
         System.out.println("  send(request())                  // ✗ method send is not declared on <Missing, Missing>");
@@ -255,6 +194,14 @@ public final class Mod008PhantomTypeBuilderDsl {
         System.out.println("  Each error names the exact type-state — IDE quick-fix can suggest the missing call.");
     }
 
+    /*
+    End-to-end
+
+    - Build a GET https://api.example.com/users/42.
+    - Build a POST https://api.example.com/users with a JSON body and a custom header.
+    - Run both through .send() (which here just renders the request as text) and verify the rendered output against
+      an expected reference.
+    */
     static void endToEnd() {
         System.out.println("[Section 6] end-to-end with reference assertions");
 

@@ -1,18 +1,18 @@
 package pl.training.concurrency.extras.chat_v2;
 
-import lombok.extern.java.Log;
-
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 import static pl.training.concurrency.extras.chat_v2.ServerEventType.MESSAGE_RECEIVED;
 
-@Log
 class MessagesHistoryLogger implements Consumer<ServerEvent> {
+
+    private static final Logger log = Logger.getLogger(MessagesHistoryLogger.class.getName());
 
     @Override
     public void accept(ServerEvent event) {
-        if (event.getType().equals(MESSAGE_RECEIVED)) {
-            log.info("New message: " + event.getPayload());
+        if (event.type().equals(MESSAGE_RECEIVED)) {
+            log.info("New message: " + event.payload());
         }
     }
 

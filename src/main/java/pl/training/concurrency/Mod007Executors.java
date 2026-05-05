@@ -17,179 +17,37 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-// =================================================================================================
-// Section 1: From threads to executors
-// =================================================================================================
-
 /*
-## From threads to executors
+From threads to executors
 
-- Manually creating a `Thread` per task ties the *what* (the work) to the *where*
-(the thread). For a server with thousands of short tasks this is wasteful: the
-JVM cannot reuse threads, scheduling pressure is high, and you have to
-hand-write start/join lifecycle for every task.
-- An `Executor` is the abstraction "submit work and let someone else manage how
-it runs". `ExecutorService` extends it with task submission that returns a
-`Future`, and lifecycle management (`shutdown`, `awaitTermination`).
-- Once you have an `ExecutorService`, the only question becomes *what kind* —
-fixed pool, cached pool, scheduled pool, virtual-thread executor (Mod011), or a
-hand-tuned `ThreadPoolExecutor`.
-*/
-
-// =================================================================================================
-// Section 2: ExecutorService factory methods
-// =================================================================================================
-
-/*
-## ExecutorService factory methods
-
-The `Executors` class provides ready-made executors:
-
-- `newFixedThreadPool(N)` — N permanent threads. Excess tasks queue. Predictable
-upper bound on resource usage; use when the workload is steady.
-- `newCachedThreadPool()` — unbounded; threads idle for 60s are reaped. Spikes
-turn into many threads; risky for unpredictable bursts.
-- `newSingleThreadExecutor()` — exactly one worker; serializes tasks. Good for
-"the dedicated thread that owns this resource" patterns.
-- `newScheduledThreadPool(N)` — adds `schedule(...)` and
-`scheduleAtFixedRate(...)`.
-- `newWorkStealingPool()` — a `ForkJoinPool` (Mod008).
-- `newVirtualThreadPerTaskExecutor()` — one virtual thread per task (Mod011).
-*/
-
-// =================================================================================================
-// Section 3: Runnable vs Callable<V> vs Future<V>
-// =================================================================================================
-
-/*
-## Runnable vs Callable<V> vs Future<V>
-
-- `Runnable` returns nothing and cannot throw checked exceptions.
-- `Callable<V>` returns a value and can throw checked exceptions. The functional
-shape is `V call() throws Exception`.
-- `submit(Runnable)` and `submit(Callable<V>)` both return a `Future<V>`. The
-future:
-  - blocks on `get()` until the task completes,
-  - returns the value (or `null` for `Runnable`),
-  - rethrows the task's exception wrapped in `ExecutionException`,
-  - supports cancellation via `cancel(mayInterruptIfRunning)`.
-*/
-
-// =================================================================================================
-// Section 4: submit vs execute
-// =================================================================================================
-
-/*
-## submit vs execute
-
-- `execute(Runnable)` is fire-and-forget. If the task throws, the exception is
-handled by the executor's `Thread.UncaughtExceptionHandler` — by default it
-prints the stack trace to stderr and the task is forgotten.
-- `submit(...)` always returns a `Future`. If the task throws and you never call
-`get()`, the exception is **swallowed silently**. This is one of the most common
-sources of "missing logs": code submits a job, never inspects the future, and
-the failure is invisible.
-- Pick `execute` when you genuinely don't care about results; pick `submit` when
-you do — but then **always** observe the future.
-*/
-
-// =================================================================================================
-// Section 5: invokeAll and invokeAny
-// =================================================================================================
-
-/*
-## invokeAll and invokeAny
-
-- `invokeAll(Collection<? extends Callable<V>>)` submits every task and returns
-only after all of them complete (successfully, with an exception, or by
-cancellation). The returned `List<Future<V>>` is in the same order as the input.
-A timed variant cancels stragglers when the deadline expires.
-- `invokeAny(...)` returns the result of the **first** task to complete
-successfully. Pending siblings are cancelled. If every task fails, it throws
-`ExecutionException`. Useful for "race two equivalent providers, take whichever
-answers first".
-*/
-
-// =================================================================================================
-// Section 6: CompletionService
-// =================================================================================================
-
-/*
-## CompletionService
-
-- `CompletionService` decouples submission from result consumption. As tasks
-finish, their futures land on an internal queue you drain with `take()` (blocks)
-or `poll()`.
-- This lets you process results **as they complete**, instead of waiting for the
-slowest task in a fixed order. Typical use: fan out N work items, write each
-result as soon as it is ready, do not block on the slowest one.
-- The standard implementation `ExecutorCompletionService` wraps any
-`ExecutorService`.
-*/
-
-// =================================================================================================
-// Section 7: ScheduledExecutorService
-// =================================================================================================
-
-/*
-## ScheduledExecutorService
-
-- `schedule(task, delay, unit)` runs once after a delay.
-- `scheduleAtFixedRate(task, initial, period, unit)` aims to fire on a fixed
-calendar — if a run takes longer than the period, runs queue up.
-- `scheduleWithFixedDelay(task, initial, delay, unit)` waits the given delay
-between the *end* of one run and the *start* of the next.
-- A scheduled task that throws an uncaught exception is **silently dropped** and
-will never run again. Wrap the body in a `try/catch` (or use `submit` and check
-the future) to keep periodic tasks alive.
-*/
-
-// =================================================================================================
-// Section 8: Custom ThreadPoolExecutor
-// =================================================================================================
-
-/*
-## Custom ThreadPoolExecutor
-
-- Construct directly when you need control beyond the `Executors` factories:
-`new ThreadPoolExecutor(corePool, maxPool, keepAliveTime, unit, workQueue,
-threadFactory, rejectedExecutionHandler)`.
-- The interaction is subtle:
-  1. Up to `corePool` threads are created on demand.
-  2. New work first goes onto the queue.
-  3. If the queue is bounded and full, new threads spin up to `maxPool`.
-  4. If both the queue is full and `maxPool` is reached, the
-     `RejectedExecutionHandler` decides what happens.
-- Built-in handlers: `AbortPolicy` (throws), `CallerRunsPolicy` (runs on the
-caller — gives back-pressure for free), `DiscardPolicy`, `DiscardOldestPolicy`.
-- Use a `ThreadFactory` to give threads meaningful names — this is the single
-most important thing you can do to make production thread dumps readable.
-*/
-
-// =================================================================================================
-// Section 9: Graceful shutdown
-// =================================================================================================
-
-/*
-## Graceful shutdown
-
-- `shutdown()` stops accepting new tasks and lets queued ones finish.
-- `awaitTermination(timeout, unit)` blocks until tasks complete or the timeout
-expires.
-- `shutdownNow()` interrupts running tasks and returns the unstarted ones in the
-queue.
-- The recommended sequence is: `shutdown()` → `awaitTermination(...)`; if it
-returns false, escalate to `shutdownNow()` and `awaitTermination(...)` again.
-- Java 19+ makes `ExecutorService` `AutoCloseable`. The `close()` method does
-exactly the above sequence (with an interruption pass) on a try-with-resources
-exit, which is now the cleanest idiom.
+- Manually creating a Thread per task ties the what (the work) to the where (the thread). For a server with thousands
+  of short tasks this is wasteful: the JVM cannot reuse threads, scheduling pressure is high, and you have to
+  hand-write start/join lifecycle for every task.
+- An Executor is the abstraction "submit work and let someone else manage how it runs". ExecutorService extends it
+  with task submission that returns a Future, and lifecycle management (shutdown, awaitTermination).
+- Once you have an ExecutorService, the only question becomes what kind — fixed pool, cached pool, scheduled pool,
+  virtual-thread executor (Mod011), or a hand-tuned ThreadPoolExecutor.
 */
 
 public final class Mod007Executors {
 
     private Mod007Executors() {}
 
-    // --- Section 2: factory methods ---
+    /*
+    ExecutorService factory methods
+
+    The Executors class provides ready-made executors:
+
+    - newFixedThreadPool(N) — N permanent threads. Excess tasks queue. Predictable upper bound on resource usage; use
+      when the workload is steady.
+    - newCachedThreadPool() — unbounded; threads idle for 60s are reaped. Spikes turn into many threads; risky for
+      unpredictable bursts.
+    - newSingleThreadExecutor() — exactly one worker; serializes tasks. Good for "the dedicated thread that owns this
+      resource" patterns.
+    - newScheduledThreadPool(N) — adds schedule(...) and scheduleAtFixedRate(...).
+    - newWorkStealingPool() — a ForkJoinPool (Mod008).
+    - newVirtualThreadPerTaskExecutor() — one virtual thread per task (Mod011).
+    */
     static void factories() throws InterruptedException {
         System.out.println("[Section 2] Executors factory methods");
 
@@ -208,7 +66,17 @@ public final class Mod007Executors {
         }
     }
 
-    // --- Section 3: Callable + Future ---
+    /*
+    Runnable vs Callable<V> vs Future<V>
+
+    - Runnable returns nothing and cannot throw checked exceptions.
+    - Callable<V> returns a value and can throw checked exceptions. The functional shape is V call() throws Exception.
+    - submit(Runnable) and submit(Callable<V>) both return a Future<V>. The future:
+      - blocks on get() until the task completes,
+      - returns the value (or null for Runnable),
+      - rethrows the task's exception wrapped in ExecutionException,
+      - supports cancellation via cancel(mayInterruptIfRunning).
+    */
     static void callableAndFuture() throws InterruptedException, ExecutionException {
         System.out.println("[Section 3] Callable + Future");
 
@@ -219,7 +87,17 @@ public final class Mod007Executors {
         }
     }
 
-    // --- Section 4: submit silently swallows exceptions ---
+    /*
+    submit vs execute
+
+    - execute(Runnable) is fire-and-forget. If the task throws, the exception is handled by the executor's
+      Thread.UncaughtExceptionHandler — by default it prints the stack trace to stderr and the task is forgotten.
+    - submit(...) always returns a Future. If the task throws and you never call get(), the exception is swallowed
+      silently. This is one of the most common sources of "missing logs": code submits a job, never inspects the
+      future, and the failure is invisible.
+    - Pick execute when you genuinely don't care about results; pick submit when you do — but then always observe the
+      future.
+    */
     static void submitVsExecute() throws InterruptedException, ExecutionException {
         System.out.println("[Section 4] submit vs execute");
 
@@ -237,7 +115,16 @@ public final class Mod007Executors {
         }
     }
 
-    // --- Section 5: invokeAll, invokeAny ---
+    /*
+    invokeAll and invokeAny
+
+    - invokeAll(Collection<? extends Callable<V>>) submits every task and returns only after all of them complete
+      (successfully, with an exception, or by cancellation). The returned List<Future<V>> is in the same order as the
+      input. A timed variant cancels stragglers when the deadline expires.
+    - invokeAny(...) returns the result of the first task to complete successfully. Pending siblings are cancelled. If
+      every task fails, it throws ExecutionException. Useful for "race two equivalent providers, take whichever
+      answers first".
+    */
     static void invokeAllAndAny() throws InterruptedException, ExecutionException {
         System.out.println("[Section 5] invokeAll, invokeAny");
 
@@ -258,7 +145,15 @@ public final class Mod007Executors {
         }
     }
 
-    // --- Section 6: CompletionService ---
+    /*
+    CompletionService
+
+    - CompletionService decouples submission from result consumption. As tasks finish, their futures land on an
+      internal queue you drain with take() (blocks) or poll().
+    - This lets you process results as they complete, instead of waiting for the slowest task in a fixed order.
+      Typical use: fan out N work items, write each result as soon as it is ready, do not block on the slowest one.
+    - The standard implementation ExecutorCompletionService wraps any ExecutorService.
+    */
     static void completionService() throws InterruptedException, ExecutionException {
         System.out.println("[Section 6] CompletionService");
 
@@ -276,7 +171,17 @@ public final class Mod007Executors {
         }
     }
 
-    // --- Section 7: ScheduledExecutorService ---
+    /*
+    ScheduledExecutorService
+
+    - schedule(task, delay, unit) runs once after a delay.
+    - scheduleAtFixedRate(task, initial, period, unit) aims to fire on a fixed calendar — if a run takes longer than
+      the period, runs queue up.
+    - scheduleWithFixedDelay(task, initial, delay, unit) waits the given delay between the end of one run and the
+      start of the next.
+    - A scheduled task that throws an uncaught exception is silently dropped and will never run again. Wrap the body
+      in a try/catch (or use submit and check the future) to keep periodic tasks alive.
+    */
     static void scheduledExecutor() throws InterruptedException {
         System.out.println("[Section 7] ScheduledExecutorService");
 
@@ -293,7 +198,22 @@ public final class Mod007Executors {
         }
     }
 
-    // --- Section 8: custom ThreadPoolExecutor ---
+    /*
+    Custom ThreadPoolExecutor
+
+    - Construct directly when you need control beyond the Executors factories:
+      new ThreadPoolExecutor(corePool, maxPool, keepAliveTime, unit, workQueue, threadFactory,
+      rejectedExecutionHandler).
+    - The interaction is subtle:
+      1. Up to corePool threads are created on demand.
+      2. New work first goes onto the queue.
+      3. If the queue is bounded and full, new threads spin up to maxPool.
+      4. If both the queue is full and maxPool is reached, the RejectedExecutionHandler decides what happens.
+    - Built-in handlers: AbortPolicy (throws), CallerRunsPolicy (runs on the caller — gives back-pressure for free),
+      DiscardPolicy, DiscardOldestPolicy.
+    - Use a ThreadFactory to give threads meaningful names — this is the single most important thing you can do to
+      make production thread dumps readable.
+    */
     static void customThreadPoolExecutor() throws InterruptedException {
         System.out.println("[Section 8] custom ThreadPoolExecutor");
 
@@ -333,7 +253,17 @@ public final class Mod007Executors {
         pool.awaitTermination(2, TimeUnit.SECONDS);
     }
 
-    // --- Section 9: graceful shutdown ---
+    /*
+    Graceful shutdown
+
+    - shutdown() stops accepting new tasks and lets queued ones finish.
+    - awaitTermination(timeout, unit) blocks until tasks complete or the timeout expires.
+    - shutdownNow() interrupts running tasks and returns the unstarted ones in the queue.
+    - The recommended sequence is: shutdown() → awaitTermination(...); if it returns false, escalate to shutdownNow()
+      and awaitTermination(...) again.
+    - Java 19+ makes ExecutorService AutoCloseable. The close() method does exactly the above sequence (with an
+      interruption pass) on a try-with-resources exit, which is now the cleanest idiom.
+    */
     static void gracefulShutdown() throws InterruptedException {
         System.out.println("[Section 9] graceful shutdown");
 

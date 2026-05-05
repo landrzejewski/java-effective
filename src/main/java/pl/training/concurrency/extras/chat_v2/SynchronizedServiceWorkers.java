@@ -1,15 +1,16 @@
 package pl.training.concurrency.extras.chat_v2;
 
-import lombok.RequiredArgsConstructor;
-
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-@RequiredArgsConstructor
 class SynchronizedServiceWorkers implements ServerWorkers {
 
     private final ServerWorkers serverWorkers;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+    SynchronizedServiceWorkers(ServerWorkers serverWorkers) {
+        this.serverWorkers = serverWorkers;
+    }
 
     @Override
     public void add(Worker worker) {

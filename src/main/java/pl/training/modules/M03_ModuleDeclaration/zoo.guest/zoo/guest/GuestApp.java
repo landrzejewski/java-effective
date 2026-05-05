@@ -1,7 +1,7 @@
-package pl.training.modules.M03_ModuleDeclaration.zoo.guest.zoo.guest;
+package zoo.guest;
 
-import pl.training.modules.M03_ModuleDeclaration.zoo.animal.talks.zoo.animal.talks.media.Recording;        // OK: unqualified export
-import pl.training.modules.M03_ModuleDeclaration.zoo.animal.talks.zoo.animal.talks.schedule.Schedule;      // OK: unqualified export
+import zoo.animal.talks.media.Recording;        // OK: unqualified export
+import zoo.animal.talks.schedule.Schedule;      // OK: unqualified export
 
 public class GuestApp {
     public static void main(String... args) {

@@ -2,130 +2,17 @@ package pl.training.functionalprogramming;
 
 import java.util.function.Function;
 
-// =================================================================================================
-// Section 1: Persistent vs ephemeral
-// =================================================================================================
-
 /*
-## Persistent vs ephemeral
+Persistent vs ephemeral
 
-- An *ephemeral* data structure is mutated in place — `ArrayList.add`,
-`HashMap.put`. Old versions are gone after each modification.
-- A *persistent* data structure preserves every previous version when an
-"update" happens. The new version *shares* internal nodes with the old
-one whenever possible — that is **structural sharing**.
-- Persistence is what makes pure FP affordable: copy-on-write would be
-prohibitive without sharing.
-- This module shows the simplest persistent shapes (cons-cell list,
-binary tree). Production-grade persistent collections (Vavr,
-Eclipse Collections, Clojure's HAMT) use far cleverer structures, but
-the core idea is the same.
-*/
-
-// =================================================================================================
-// Section 2: Cons-cell List
-// =================================================================================================
-
-/*
-## Cons-cell List
-
-The classic linked list:
-
-```
-sealed interface List<A> permits Nil, Cons {}
-record Nil<A>()                  implements List<A> {}
-record Cons<A>(A head, List<A> tail) implements List<A> {}
-```
-
-- `prepend(x)` produces a new `Cons(x, this)` — O(1) and shares the tail.
-- `append(x)` is O(n) — every `Cons` from the front must be re-built so
-  the new tail can be appended. Persistent, but expensive on this shape.
-- Folds, map, filter, reverse — all expressed via the same pattern match
-  on `Nil` / `Cons`.
-*/
-
-// =================================================================================================
-// Section 3: Structural sharing
-// =================================================================================================
-
-/*
-## Structural sharing
-
-Two lists `a` and `b = a.prepend(x)` share the suffix:
-
-```
-a:        1 → 2 → 3 → ∅
-b:   x →  ─────────╯
-```
-
-`b.tail() == a` is *reference equality*. No copying happened. Modifying
-either does not affect the other because the structure is immutable —
-sharing is safe.
-
-Inserting "into the middle" of a persistent list rebuilds the prefix in
-front of the insertion point and shares the suffix from the insertion
-point onward. The cost grows with the index, not with the total length
-of the list.
-*/
-
-// =================================================================================================
-// Section 4: Tree
-// =================================================================================================
-
-/*
-## Tree
-
-Persistent binary tree:
-
-```
-sealed interface Tree<A> permits Leaf, Branch {}
-record Leaf<A>(A value)                   implements Tree<A> {}
-record Branch<A>(Tree<A> left, Tree<A> right) implements Tree<A> {}
-```
-
-A `mapValues` walk re-uses the structure (same Branches with new Leaves)
-when only values change. Inserting into a sorted tree returns a new
-`Branch` along the path from the root to the insertion point; the
-unchanged subtree is shared by reference.
-*/
-
-// =================================================================================================
-// Section 5: Cost model
-// =================================================================================================
-
-/*
-## Cost model (cons-list specifics)
-
-| Operation       | Time    | Sharing                                    |
-|-----------------|---------|--------------------------------------------|
-| `prepend(x)`    | O(1)    | full tail shared                           |
-| `head/tail`     | O(1)    | none needed                                |
-| `append(x)`     | O(n)    | nothing — every front node is rebuilt      |
-| `concat(other)` | O(n)    | the right operand is shared                |
-| `map / filter`  | O(n)    | front rebuilt; tail values copied          |
-
-For random-access patterns, use a `Vector` (e.g., Vavr's `Vector` based
-on RRB-trees) instead. The cons-cell list above is for teaching, not for
-production data piping.
-*/
-
-// =================================================================================================
-// Section 6: End-to-end — 100 versions, none mutated
-// =================================================================================================
-
-/*
-## End-to-end — 100 versions, none mutated
-
-Build 100 persistent versions of a list by repeatedly prepending; keep
-references to all of them in an array; verify that:
-
-- every intermediate version still has the length it had at creation,
-- the youngest version's tail (after one drop) has reference equality
-  with version 99,
-- versions are pairwise distinct objects with different sizes.
-
-This is the pay-off of structural sharing: 100 versions live
-simultaneously without paying 100× the memory.
+- An ephemeral data structure is mutated in place — ArrayList.add, HashMap.put. Old versions are gone after each
+  modification.
+- A persistent data structure preserves every previous version when an "update" happens. The new version shares
+  internal nodes with the old one whenever possible — that is structural sharing.
+- Persistence is what makes pure FP affordable: copy-on-write would be prohibitive without sharing.
+- This module shows the simplest persistent shapes (cons-cell list, binary tree). Production-grade persistent
+  collections (Vavr, Eclipse Collections, Clojure's HAMT) use far cleverer structures, but the core idea is the
+  same.
 */
 
 public final class Mod004ImmutableDataStructures {
@@ -199,6 +86,20 @@ public final class Mod004ImmutableDataStructures {
     // Sections
     // =================================================================================================
 
+    /*
+    Cons-cell List
+
+    The classic linked list:
+
+    sealed interface List<A> permits Nil, Cons {}
+    record Nil<A>()                  implements List<A> {}
+    record Cons<A>(A head, List<A> tail) implements List<A> {}
+
+    - prepend(x) produces a new Cons(x, this) — O(1) and shares the tail.
+    - append(x) is O(n) — every Cons from the front must be re-built so the new tail can be appended. Persistent,
+      but expensive on this shape.
+    - Folds, map, filter, reverse — all expressed via the same pattern match on Nil / Cons.
+    */
     static void persistentVsEphemeral() {
         System.out.println("[Section 1+2] cons-cell list");
         FList<Integer> a = FList.of(1, 2, 3);
@@ -208,6 +109,21 @@ public final class Mod004ImmutableDataStructures {
         System.out.println("  a.size  = " + a.size() + ", b.size = " + b.size());
     }
 
+    /*
+    Structural sharing
+
+    Two lists a and b = a.prepend(x) share the suffix:
+
+    a:        1 → 2 → 3 → ∅
+    b:   x →  ─────────╯
+
+    b.tail() == a is reference equality. No copying happened. Modifying either does not affect the other because
+    the structure is immutable — sharing is safe.
+
+    Inserting "into the middle" of a persistent list rebuilds the prefix in front of the insertion point and shares
+    the suffix from the insertion point onward. The cost grows with the index, not with the total length of the
+    list.
+    */
     static void structuralSharing() {
         System.out.println("[Section 3] structural sharing");
         FList<Integer> a = FList.of(1, 2, 3);
@@ -218,6 +134,19 @@ public final class Mod004ImmutableDataStructures {
         System.out.println("  b.tail() == a (reference equality)? " + sharing);
     }
 
+    /*
+    Tree
+
+    Persistent binary tree:
+
+    sealed interface Tree<A> permits Leaf, Branch {}
+    record Leaf<A>(A value)                   implements Tree<A> {}
+    record Branch<A>(Tree<A> left, Tree<A> right) implements Tree<A> {}
+
+    A mapValues walk re-uses the structure (same Branches with new Leaves) when only values change. Inserting into
+    a sorted tree returns a new Branch along the path from the root to the insertion point; the unchanged subtree
+    is shared by reference.
+    */
     static void treeDemo() {
         System.out.println("[Section 4] tree");
         Tree<Integer> tree = new Branch<>(
@@ -228,6 +157,20 @@ public final class Mod004ImmutableDataStructures {
                 + (tree.size() == tree.mapValues(x -> x * 10).size()));
     }
 
+    /*
+    Cost model (cons-list specifics)
+
+      Operation       Time    Sharing
+      --------------- ------- ------------------------------------------
+      prepend(x)      O(1)    full tail shared
+      head/tail       O(1)    none needed
+      append(x)       O(n)    nothing — every front node is rebuilt
+      concat(other)   O(n)    the right operand is shared
+      map / filter    O(n)    front rebuilt; tail values copied
+
+    For random-access patterns, use a Vector (e.g., Vavr's Vector based on RRB-trees) instead. The cons-cell list
+    above is for teaching, not for production data piping.
+    */
     static void costModel() {
         System.out.println("[Section 5] cost model — prepend O(1), append O(n)");
         FList<Integer> empty = FList.empty();
@@ -238,6 +181,18 @@ public final class Mod004ImmutableDataStructures {
         System.out.println("  100k prepends took " + prependMs + " ms; size = " + built.size());
     }
 
+    /*
+    End-to-end — 100 versions, none mutated
+
+    Build 100 persistent versions of a list by repeatedly prepending; keep references to all of them in an array;
+    verify that:
+
+    - every intermediate version still has the length it had at creation,
+    - the youngest version's tail (after one drop) has reference equality with version 99,
+    - versions are pairwise distinct objects with different sizes.
+
+    This is the pay-off of structural sharing: 100 versions live simultaneously without paying 100× the memory.
+    */
     static void endToEnd() {
         System.out.println("[Section 6] 100 versions, none mutated");
         @SuppressWarnings("unchecked")

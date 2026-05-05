@@ -1,4 +1,4 @@
-package pl.training.modules.M03_ModuleDeclaration.zoo.animal.talks.zoo.animal.talks.schedule.internal;
+package zoo.animal.talks.schedule.internal;
 
 // This class is reached only via reflection because the package is `opens` (not exported).
 public class Slot {

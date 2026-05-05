@@ -19,7 +19,7 @@ public class GithubService {
 
     public Observable<List<Repository>> getRepositories(String query) {
         return githubApi.getRepositories(query)
-                .map(QueryResult::getItems);
+                .map(QueryResult::items);
     }
 
 }

@@ -1,14 +1,14 @@
 package pl.training.concurrency.extras.chat_v3;
 
-import lombok.extern.java.Log;
-
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.logging.Level;
+import java.util.logging.Logger;
 
-@Log
 public class Connection {
+
+    private static final Logger log = Logger.getLogger(Connection.class.getName());
 
     private PrintWriter writer;
 

@@ -1,12 +1,7 @@
 package pl.training.concurrency.extras.rx_search.wikipedia;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import lombok.Data;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-@Data
-public class Article {
-
-    private String title;
-
+public record Article(String title) {
 }

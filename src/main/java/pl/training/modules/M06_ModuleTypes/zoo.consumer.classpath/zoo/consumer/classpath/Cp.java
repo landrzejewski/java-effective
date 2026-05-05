@@ -1,6 +1,6 @@
-package pl.training.modules.M06_ModuleTypes.zoo.consumer.classpath.zoo.consumer.classpath;
+package zoo.consumer.classpath;
 
-import pl.training.modules.M06_ModuleTypes.zoo.legacy.zoo.legacy.LegacyHelper;
+import zoo.legacy.LegacyHelper;
 
 // No module-info.java in this directory — at runtime this code lives in the unnamed module.
 public class Cp {

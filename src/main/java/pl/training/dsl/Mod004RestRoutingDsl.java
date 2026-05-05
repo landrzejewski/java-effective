@@ -9,103 +9,16 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// =================================================================================================
-// Section 1: What a routing DSL gives you
-// =================================================================================================
-
 /*
-## What a routing DSL gives you
+What a routing DSL gives you
 
-- A routing DSL declares the mapping from `(method, path-pattern)` to a
-*handler* function. The whole routing table sits in one place; routes
-become greppable, code-reviewable, and reorderable.
-- This module is Javalin-flavoured: `app.get("/orders/{id}", ctx -> ...)`
-with path parameters, before-filters, after-filters, and grouped routes.
-A real framework would also handle content negotiation, async, and
-WebSocket — out of scope here.
-- Compare with JAX-RS annotations: the annotation form spreads the route
-table across many classes; the DSL keeps it in one method that reads
-top-to-bottom.
-*/
-
-// =================================================================================================
-// Section 2: Method + path pattern matching
-// =================================================================================================
-
-/*
-## Method + path pattern matching
-
-- A path pattern like `/orders/{id}/items/{itemId}` is compiled once into
-  a regex (`^/orders/([^/]+)/items/([^/]+)$`) plus an ordered list of
-  parameter names.
-- At dispatch time the request path is matched against each compiled
-  pattern in registration order; the first match wins.
-- The handler receives a `Request` whose `pathParam(name)` looks up by
-  name. The user never deals with regex groups directly.
-*/
-
-// =================================================================================================
-// Section 3: Typed Request / Response
-// =================================================================================================
-
-/*
-## Typed Request / Response
-
-- `Request` exposes `method`, `path`, `pathParam(name)`, `queryParam(name)`,
-  `header(name)`, and `body()`.
-- `Response` is an immutable record `(status, headers, body)`. Helpers
-  `Response.ok(...)`, `Response.notFound(...)`, `Response.badRequest(...)`
-  cover the common shapes without making the call site write status codes
-  by hand.
-- Typed "handler" is just `Function<Request, Response>` — same shape as
-  servlets, but composable with regular Java functions.
-*/
-
-// =================================================================================================
-// Section 4: Middleware (before / after)
-// =================================================================================================
-
-/*
-## Middleware (before / after)
-
-- A `before` filter runs prior to the handler and can short-circuit by
-returning a `Response` (auth fails, rate limit exceeded). Returning
-`null` lets the chain proceed.
-- An `after` filter receives the produced `Response` and can rewrite it —
-adding common headers, wrapping errors, gzip-encoding the body.
-- The chain composes left-to-right in registration order; in real
-frameworks middleware is the first thing teams customise.
-*/
-
-// =================================================================================================
-// Section 5: Grouped routes
-// =================================================================================================
-
-/*
-## Grouped routes
-
-- `path("/orders", () -> { get("/", list); post("/", create); ... })`
-prepends the prefix to every route registered inside the lambda. Cuts the
-path duplication that creeps into REST APIs over time.
-- Groups can nest. The DSL maintains a stack of prefixes that is restored
-when the lambda returns.
-*/
-
-// =================================================================================================
-// Section 6: End-to-end on the order service
-// =================================================================================================
-
-/*
-## End-to-end on the order service
-
-- Register four endpoints: `GET /orders/{id}`, `GET /orders`,
-  `POST /orders`, `DELETE /orders/{id}`.
-- Wire one before-filter (require `Authorization: Bearer …`) and one
-  after-filter (force `Content-Type: application/json`).
-- Simulate five requests (one missing auth, one nonexistent id, one
-  successful POST, etc.) and print the resulting `(status, body)` pair.
-- A small reference table validates that each simulated request gets the
-  expected status code.
+- A routing DSL declares the mapping from (method, path-pattern) to a handler function. The whole routing table sits
+  in one place; routes become greppable, code-reviewable, and reorderable.
+- This module is Javalin-flavoured: app.get("/orders/{id}", ctx -> ...) with path parameters, before-filters,
+  after-filters, and grouped routes. A real framework would also handle content negotiation, async, and WebSocket —
+  out of scope here.
+- Compare with JAX-RS annotations: the annotation form spreads the route table across many classes; the DSL keeps it
+  in one method that reads top-to-bottom.
 */
 
 public final class Mod004RestRoutingDsl {
@@ -258,7 +171,16 @@ public final class Mod004RestRoutingDsl {
     // Sections
     // =================================================================================================
 
-    // --- Section 2: pattern matching mechanics shown standalone
+    /*
+    Method + path pattern matching
+
+    - A path pattern like /orders/{id}/items/{itemId} is compiled once into a regex
+      (^/orders/([^/]+)/items/([^/]+)$) plus an ordered list of parameter names.
+    - At dispatch time the request path is matched against each compiled pattern in registration order; the first
+      match wins.
+    - The handler receives a Request whose pathParam(name) looks up by name. The user never deals with regex groups
+      directly.
+    */
     static void patternMatching() {
         System.out.println("[Section 2] path-pattern matching");
         Route r = new Route("GET", "/orders/{id}/items/{itemId}",
@@ -268,7 +190,15 @@ public final class Mod004RestRoutingDsl {
         System.out.println("  /other                  -> " + r.matchPathParams("/other"));
     }
 
-    // --- Section 3: typed request / response shapes
+    /*
+    Typed Request / Response
+
+    - Request exposes method, path, pathParam(name), queryParam(name), header(name), and body().
+    - Response is an immutable record (status, headers, body). Helpers Response.ok(...), Response.notFound(...),
+      Response.badRequest(...) cover the common shapes without making the call site write status codes by hand.
+    - Typed "handler" is just Function<Request, Response> — same shape as servlets, but composable with regular Java
+      functions.
+    */
     static void typedShapes() {
         System.out.println("[Section 3] Request / Response shapes");
         var req = new Request("GET", "/orders/o-1",
@@ -280,7 +210,16 @@ public final class Mod004RestRoutingDsl {
         System.out.println("  Response.ok          = " + Response.ok("body"));
     }
 
-    // --- Section 4: middleware composition (used in §6)
+    /*
+    Middleware (before / after)
+
+    - A before filter runs prior to the handler and can short-circuit by returning a Response (auth fails, rate
+      limit exceeded). Returning null lets the chain proceed.
+    - An after filter receives the produced Response and can rewrite it — adding common headers, wrapping errors,
+      gzip-encoding the body.
+    - The chain composes left-to-right in registration order; in real frameworks middleware is the first thing teams
+      customise.
+    */
     private static Before requireBearerAuth() {
         return req -> req.header("Authorization").filter(h -> h.startsWith("Bearer ")).isPresent()
                 ? null
@@ -301,7 +240,13 @@ public final class Mod004RestRoutingDsl {
         System.out.println("  authed   → " + (b.apply(authed) == null ? "<continue>" : "rejected"));
     }
 
-    // --- Section 5: grouped routes — visualise the registered table
+    /*
+    Grouped routes
+
+    - path("/orders", () -> { get("/", list); post("/", create); ... }) prepends the prefix to every route
+      registered inside the lambda. Cuts the path duplication that creeps into REST APIs over time.
+    - Groups can nest. The DSL maintains a stack of prefixes that is restored when the lambda returns.
+    */
     static Router buildOrderService() {
         var router = new Router();
 
@@ -324,7 +269,16 @@ public final class Mod004RestRoutingDsl {
         for (var r : router.routes) System.out.println("  " + String.format("%-7s %s", r.method, r.pattern));
     }
 
-    // --- Section 6: end-to-end with reference assertions
+    /*
+    End-to-end on the order service
+
+    - Register four endpoints: GET /orders/{id}, GET /orders, POST /orders, DELETE /orders/{id}.
+    - Wire one before-filter (require Authorization: Bearer …) and one after-filter (force
+      Content-Type: application/json).
+    - Simulate five requests (one missing auth, one nonexistent id, one successful POST, etc.) and print the
+      resulting (status, body) pair.
+    - A small reference table validates that each simulated request gets the expected status code.
+    */
     static void endToEnd() {
         System.out.println("[Section 6] end-to-end + assertions");
         var router = buildOrderService();

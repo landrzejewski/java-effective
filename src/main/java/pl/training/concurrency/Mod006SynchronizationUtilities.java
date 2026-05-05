@@ -10,122 +10,36 @@ import java.util.concurrent.Phaser;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
 
-// =================================================================================================
-// Section 1: Semaphore
-// =================================================================================================
-
 /*
-## Semaphore
+Decision matrix
 
-- A `Semaphore` holds a non-negative count of *permits*. `acquire()` blocks until a
-permit is available and then takes one; `release()` returns one.
-- Use it to bound concurrent access to a finite resource: a connection pool of N
-connections, a printer that allows K simultaneous jobs, an outbound API that
-rate-limits to R parallel calls.
-- A semaphore with a single permit is essentially a non-reentrant mutex. Unlike a
-`ReentrantLock`, the same thread cannot re-acquire it without releasing first, and
-a permit can be released by a *different* thread than the one that acquired it —
-useful for hand-off patterns.
-- `tryAcquire()` is the non-blocking variant; `tryAcquire(timeout, unit)` waits at
-most the given time. Both should be paired with `release()` in `finally`.
-*/
-
-// =================================================================================================
-// Section 2: CountDownLatch
-// =================================================================================================
-
-/*
-## CountDownLatch
-
-- A `CountDownLatch(N)` is a one-shot counter that waiters can `await()` until N
-calls of `countDown()` have happened. The count cannot be reset.
-- Use it for one-time rendezvous: "wait for K services to come up", "wait for N
-preload tasks to finish before serving traffic", "wait for the start signal".
-- `await(timeout, unit)` returns `false` instead of throwing if the latch has not
-fired in time.
-- For repeating rendezvous use `CyclicBarrier` (§3); for dynamic, multi-phase
-coordination use `Phaser` (§4).
-*/
-
-// =================================================================================================
-// Section 3: CyclicBarrier
-// =================================================================================================
-
-/*
-## CyclicBarrier
-
-- A `CyclicBarrier(parties)` makes `parties` threads wait for each other at a
-common point. Once they all arrive, the barrier *trips*: all threads are released
-and the barrier can be reused for the next round.
-- Optional barrier action runs in one of the trip threads each round — useful for
-end-of-phase aggregation in iterative algorithms.
-- If any thread leaves the barrier abnormally (interrupt, timeout), the barrier
-becomes *broken* and other parties get `BrokenBarrierException`. Call `reset()`
-to put it back in a usable state.
-- Typical use: parallel iterative simulations where every step must finish before
-the next begins.
-*/
-
-// =================================================================================================
-// Section 4: Phaser
-// =================================================================================================
-
-/*
-## Phaser
-
-- `Phaser` generalises both `CountDownLatch` and `CyclicBarrier`:
-  - The number of registered parties can change at runtime
-    (`register`/`arriveAndDeregister`).
-  - There can be many phases.
-- `arriveAndAwaitAdvance()` is the analogue of `CyclicBarrier.await()`. Phase
-numbers (`getPhase()`) increase on each advance.
-- A party can drop out without breaking the rest by calling `arriveAndDeregister`.
-- Override `onAdvance(phase, registeredParties)` to inject a barrier action and to
-terminate the phaser when it returns true.
-- Use `Phaser` when the number of participants varies between phases (e.g.,
-recursion-style parallel decompositions, multi-stage pipelines with optional
-stages).
-*/
-
-// =================================================================================================
-// Section 5: Exchanger
-// =================================================================================================
-
-/*
-## Exchanger
-
-- An `Exchanger<V>` is a synchronous data swap point for a pair of threads. Each
-thread calls `exchange(v)`; both calls block until the other arrives, then each
-receives the partner's value.
-- Use cases are narrow: pipeline buffer hand-off, double buffering between a
-producer and a consumer where each party reuses a structure that was filled (or
-emptied) by the other.
-- For more than two threads use a `BlockingQueue`; for synchronization without
-data movement use a barrier.
-*/
-
-// =================================================================================================
-// Section 6: Decision matrix
-// =================================================================================================
-
-/*
-## Decision matrix
-
-| Need                                                            | Pick               |
-|-----------------------------------------------------------------|--------------------|
-| Bound concurrent access to N resources                          | `Semaphore`        |
-| One-shot "wait until K events have happened"                    | `CountDownLatch`   |
-| Repeated rendezvous of a fixed set of threads                   | `CyclicBarrier`    |
-| Multi-phase rendezvous, parties added/removed between phases    | `Phaser`           |
-| Two threads need to swap data                                   | `Exchanger`        |
-| Bounded handoff between many producers and many consumers      | `BlockingQueue` (Mod005) |
+  Need                                                          Pick
+  ------------------------------------------------------------- ----------------------
+  Bound concurrent access to N resources                        Semaphore
+  One-shot "wait until K events have happened"                  CountDownLatch
+  Repeated rendezvous of a fixed set of threads                 CyclicBarrier
+  Multi-phase rendezvous, parties added/removed between phases  Phaser
+  Two threads need to swap data                                 Exchanger
+  Bounded handoff between many producers and many consumers    BlockingQueue (Mod005)
 */
 
 public final class Mod006SynchronizationUtilities {
 
     private Mod006SynchronizationUtilities() {}
 
-    // --- Section 1: Semaphore — bounded printer ---
+    /*
+    Semaphore
+
+    - A Semaphore holds a non-negative count of permits. acquire() blocks until a permit is available and then takes
+      one; release() returns one.
+    - Use it to bound concurrent access to a finite resource: a connection pool of N connections, a printer that
+      allows K simultaneous jobs, an outbound API that rate-limits to R parallel calls.
+    - A semaphore with a single permit is essentially a non-reentrant mutex. Unlike a ReentrantLock, the same thread
+      cannot re-acquire it without releasing first, and a permit can be released by a different thread than the one
+      that acquired it — useful for hand-off patterns.
+    - tryAcquire() is the non-blocking variant; tryAcquire(timeout, unit) waits at most the given time. Both should be
+      paired with release() in finally.
+    */
     static void semaphore() throws InterruptedException {
         System.out.println("[Section 1] Semaphore — bounded printer");
 
@@ -148,7 +62,16 @@ public final class Mod006SynchronizationUtilities {
         for (var t : ts) t.join();
     }
 
-    // --- Section 2: CountDownLatch — start signal + completion barrier ---
+    /*
+    CountDownLatch
+
+    - A CountDownLatch(N) is a one-shot counter that waiters can await() until N calls of countDown() have happened.
+      The count cannot be reset.
+    - Use it for one-time rendezvous: "wait for K services to come up", "wait for N preload tasks to finish before
+      serving traffic", "wait for the start signal".
+    - await(timeout, unit) returns false instead of throwing if the latch has not fired in time.
+    - For repeating rendezvous use CyclicBarrier (§3); for dynamic, multi-phase coordination use Phaser (§4).
+    */
     static void countDownLatch() throws InterruptedException {
         System.out.println("[Section 2] CountDownLatch — start signal + completion");
 
@@ -173,7 +96,17 @@ public final class Mod006SynchronizationUtilities {
         System.out.println("  all runners home");
     }
 
-    // --- Section 3: CyclicBarrier — three-step iterative simulation ---
+    /*
+    CyclicBarrier
+
+    - A CyclicBarrier(parties) makes parties threads wait for each other at a common point. Once they all arrive, the
+      barrier trips: all threads are released and the barrier can be reused for the next round.
+    - Optional barrier action runs in one of the trip threads each round — useful for end-of-phase aggregation in
+      iterative algorithms.
+    - If any thread leaves the barrier abnormally (interrupt, timeout), the barrier becomes broken and other parties
+      get BrokenBarrierException. Call reset() to put it back in a usable state.
+    - Typical use: parallel iterative simulations where every step must finish before the next begins.
+    */
     static void cyclicBarrier() throws InterruptedException {
         System.out.println("[Section 3] CyclicBarrier — iterative simulation");
 
@@ -199,7 +132,20 @@ public final class Mod006SynchronizationUtilities {
         for (var t : ts) t.join();
     }
 
-    // --- Section 4: Phaser — pipeline with dynamic parties ---
+    /*
+    Phaser
+
+    - Phaser generalises both CountDownLatch and CyclicBarrier:
+      - The number of registered parties can change at runtime (register/arriveAndDeregister).
+      - There can be many phases.
+    - arriveAndAwaitAdvance() is the analogue of CyclicBarrier.await(). Phase numbers (getPhase()) increase on each
+      advance.
+    - A party can drop out without breaking the rest by calling arriveAndDeregister.
+    - Override onAdvance(phase, registeredParties) to inject a barrier action and to terminate the phaser when it
+      returns true.
+    - Use Phaser when the number of participants varies between phases (e.g., recursion-style parallel decompositions,
+      multi-stage pipelines with optional stages).
+    */
     static void phaser() throws InterruptedException {
         System.out.println("[Section 4] Phaser — pipeline with dynamic parties");
 
@@ -241,7 +187,15 @@ public final class Mod006SynchronizationUtilities {
         while (!phaser.isTerminated()) Thread.sleep(20);
     }
 
-    // --- Section 5: Exchanger — double buffering ---
+    /*
+    Exchanger
+
+    - An Exchanger<V> is a synchronous data swap point for a pair of threads. Each thread calls exchange(v); both
+      calls block until the other arrives, then each receives the partner's value.
+    - Use cases are narrow: pipeline buffer hand-off, double buffering between a producer and a consumer where each
+      party reuses a structure that was filled (or emptied) by the other.
+    - For more than two threads use a BlockingQueue; for synchronization without data movement use a barrier.
+    */
     static void exchanger() throws InterruptedException {
         System.out.println("[Section 5] Exchanger — double buffering");
 

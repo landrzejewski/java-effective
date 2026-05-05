@@ -6,128 +6,6 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-// =================================================================================================
-// Section 1: Recursion as the FP loop
-// =================================================================================================
-
-/*
-## Recursion as the FP loop
-
-Functional code typically replaces `for` and `while` with **recursion**:
-
-- A *base case* says when to stop (empty list, n == 0).
-- A *recursive case* breaks the input into a smaller piece and combines
-the result of the recursive call with the local data.
-
-The shape of the recursion mirrors the shape of the data structure:
-linked lists fold by head/tail, trees fold by left/right subtree.
-
-Recursion is a powerful elimination form, but Java's stack is finite.
-For deep recursion you need either explicit iteration, accumulator
-recursion (§3) or a **trampoline** (§5).
-*/
-
-// =================================================================================================
-// Section 2: foldLeft / foldRight as universal recursion templates
-// =================================================================================================
-
-/*
-## foldLeft / foldRight as universal recursion templates
-
-Both folds reduce a list to a single value.
-
-- `foldLeft(z, f, list)` runs `f(z, x1)` first, then `f(_, x2)`, … —
-  left-to-right, accumulator-passing.
-- `foldRight(z, f, list)` runs `f(xN, z)` first, then `f(xN-1, _)`, … —
-  right-to-left, building the result top-down.
-
-Sum, product, length, max, min, reverse, map, filter, zipWith — every
-one of them is a fold. Recognising the fold shape teaches you to think
-in operations over the whole structure rather than indexing.
-*/
-
-// =================================================================================================
-// Section 3: Left vs right folding — choosing one
-// =================================================================================================
-
-/*
-## Left vs right folding — choosing one
-
-- **`foldLeft` is naturally tail-recursive.** It walks the list with an
-accumulator; in a language with TCO it runs in constant stack.
-- **`foldRight` is not.** Each recursive call wraps the previous result
-in a function application, so the stack grows with N. In FP languages
-you fix it with laziness; in Java you fix it by *converting to foldLeft
-on the reversed list* or by trampolining.
-- Pick `foldLeft` when the operation is associative or you only need an
-accumulator; pick `foldRight` when you need the right-most element to
-combine first (e.g., building a list head-first).
-*/
-
-// =================================================================================================
-// Section 4: Java's missing tail-call optimisation
-// =================================================================================================
-
-/*
-## Java's missing tail-call optimisation
-
-Even a perfectly tail-recursive Java method blows the stack on deep
-inputs:
-
-```java
-static int factTr(int n, int acc) {
-    if (n == 0) return acc;
-    return factTr(n - 1, acc * n);   // tail call — but JVM does NOT eliminate it
-}
-factTr(50_000, 1);                   // → StackOverflowError
-```
-
-The JVM has had a TCO proposal sitting around for years; in production
-JVMs the call frame is allocated on every recursive call. The standard
-fixes are:
-
-- Rewrite the recursion as a `for` loop (idiomatic Java).
-- Use a **trampoline** (§5) to keep the recursive shape but bound the
-  stack to a single frame.
-*/
-
-// =================================================================================================
-// Section 5: Trampolines
-// =================================================================================================
-
-/*
-## Trampolines
-
-A *trampoline* turns recursion into iteration:
-
-- A recursive call returns not the final value, but a thunk
-  (`Supplier`) that, when run, performs the next step.
-- The driver loop pulls the thunk, runs it, gets either another thunk or
-  a final value, and repeats until done.
-- The recursive *shape* is preserved — the code looks like recursion —
-  but the actual call stack is a single frame.
-
-Below: `Trampoline<T>` is a tiny three-line API. `factorial(50_000)`
-runs to completion as a `BigInteger` without StackOverflow.
-*/
-
-// =================================================================================================
-// Section 6: End-to-end self-check
-// =================================================================================================
-
-/*
-## End-to-end self-check
-
-- For five list operations (sum, product, length, reverse, max), build
-  two implementations: a direct recursive one and a fold-based one.
-  Assert they agree on a small list.
-- For factorial, build a naive recursive `BigInteger` version, a tail-
-  recursive accumulating version (still blows the stack at 50_000 in
-  Java!), and a trampolined version that does not.
-- Print everything and confirm the trampolined factorial produced the
-  expected number of digits.
-*/
-
 public final class Mod003RecursionAndFolds {
 
     private Mod003RecursionAndFolds() {}
@@ -234,6 +112,21 @@ public final class Mod003RecursionAndFolds {
     // Sections
     // =================================================================================================
 
+    /*
+    Recursion as the FP loop
+
+    Functional code typically replaces for and while with recursion:
+
+    - A base case says when to stop (empty list, n == 0).
+    - A recursive case breaks the input into a smaller piece and combines the result of the recursive call with the
+      local data.
+
+    The shape of the recursion mirrors the shape of the data structure: linked lists fold by head/tail, trees fold
+    by left/right subtree.
+
+    Recursion is a powerful elimination form, but Java's stack is finite. For deep recursion you need either
+    explicit iteration, accumulator recursion (§3) or a trampoline (§5).
+    */
     static void recursionAsLoop() {
         System.out.println("[Section 1] recursion as the FP loop");
         var xs = List.of(1, 2, 3, 4, 5);
@@ -241,6 +134,17 @@ public final class Mod003RecursionAndFolds {
         System.out.println("  reverseRecursive    = " + reverseRecursive(xs));
     }
 
+    /*
+    foldLeft / foldRight as universal recursion templates
+
+    Both folds reduce a list to a single value.
+
+    - foldLeft(z, f, list) runs f(z, x1) first, then f(_, x2), … — left-to-right, accumulator-passing.
+    - foldRight(z, f, list) runs f(xN, z) first, then f(xN-1, _), … — right-to-left, building the result top-down.
+
+    Sum, product, length, max, min, reverse, map, filter, zipWith — every one of them is a fold. Recognising the
+    fold shape teaches you to think in operations over the whole structure rather than indexing.
+    */
     static void foldsAsTemplates() {
         System.out.println("[Section 2] folds as universal templates");
         var xs = List.of(1, 2, 3, 4, 5);
@@ -251,6 +155,17 @@ public final class Mod003RecursionAndFolds {
                         xs));
     }
 
+    /*
+    Left vs right folding — choosing one
+
+    - foldLeft is naturally tail-recursive. It walks the list with an accumulator; in a language with TCO it runs
+      in constant stack.
+    - foldRight is not. Each recursive call wraps the previous result in a function application, so the stack grows
+      with N. In FP languages you fix it with laziness; in Java you fix it by converting to foldLeft on the reversed
+      list or by trampolining.
+    - Pick foldLeft when the operation is associative or you only need an accumulator; pick foldRight when you need
+      the right-most element to combine first (e.g., building a list head-first).
+    */
     static void leftVsRight() {
         System.out.println("[Section 3] left vs right");
         var xs = List.of("a", "b", "c", "d");
@@ -262,6 +177,23 @@ public final class Mod003RecursionAndFolds {
         System.out.println("  foldRight = " + right);
     }
 
+    /*
+    Java's missing tail-call optimisation
+
+    Even a perfectly tail-recursive Java method blows the stack on deep inputs:
+
+    static int factTr(int n, int acc) {
+        if (n == 0) return acc;
+        return factTr(n - 1, acc * n);   // tail call — but JVM does NOT eliminate it
+    }
+    factTr(50_000, 1);                   // → StackOverflowError
+
+    The JVM has had a TCO proposal sitting around for years; in production JVMs the call frame is allocated on every
+    recursive call. The standard fixes are:
+
+    - Rewrite the recursion as a for loop (idiomatic Java).
+    - Use a trampoline (§5) to keep the recursive shape but bound the stack to a single frame.
+    */
     static void noTcoInJava() {
         System.out.println("[Section 4] no TCO in Java");
         // Demonstrate with a manageable size; show that tail-recursive shape does not save the stack.
@@ -273,6 +205,19 @@ public final class Mod003RecursionAndFolds {
         }
     }
 
+    /*
+    Trampolines
+
+    A trampoline turns recursion into iteration:
+
+    - A recursive call returns not the final value, but a thunk (Supplier) that, when run, performs the next step.
+    - The driver loop pulls the thunk, runs it, gets either another thunk or a final value, and repeats until done.
+    - The recursive shape is preserved — the code looks like recursion — but the actual call stack is a single
+      frame.
+
+    Below: Trampoline<T> is a tiny three-line API. factorial(50_000) runs to completion as a BigInteger without
+    StackOverflow.
+    */
     static void trampolinesDemo() {
         System.out.println("[Section 5] trampolines");
         var bigN = 50_000;
@@ -280,6 +225,15 @@ public final class Mod003RecursionAndFolds {
         System.out.println("  factTrampolined(" + bigN + ") = " + result.toString().length() + " digit number");
     }
 
+    /*
+    End-to-end self-check
+
+    - For five list operations (sum, product, length, reverse, max), build two implementations: a direct recursive
+      one and a fold-based one. Assert they agree on a small list.
+    - For factorial, build a naive recursive BigInteger version, a tail-recursive accumulating version (still blows
+      the stack at 50_000 in Java!), and a trampolined version that does not.
+    - Print everything and confirm the trampolined factorial produced the expected number of digits.
+    */
     static void endToEnd() {
         System.out.println("[Section 6] end-to-end self-check");
         var xs = List.of(3, 1, 4, 1, 5, 9, 2, 6);

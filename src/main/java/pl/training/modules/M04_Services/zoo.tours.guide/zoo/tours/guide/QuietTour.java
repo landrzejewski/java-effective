@@ -1,7 +1,7 @@
-package pl.training.modules.M04_Services.zoo.tours.guide.zoo.tours.guide;
+package zoo.tours.guide;
 
-import pl.training.modules.M04_Services.zoo.tours.api.zoo.tours.api.Souvenir;
-import pl.training.modules.M04_Services.zoo.tours.api.zoo.tours.api.Tour;
+import zoo.tours.api.Souvenir;
+import zoo.tours.api.Tour;
 
 public class QuietTour implements Tour {
     public QuietTour() {} // public no-arg constructor required by ServiceLoader

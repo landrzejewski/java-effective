@@ -1,4 +1,4 @@
-package pl.training.modules.M05_DiscoveringModules.zoo.inventory.zoo.inventory;
+package zoo.inventory;
 
 import java.sql.DriverManager;        // pulls java.sql at compile and run time
 import java.util.logging.Logger;      // pulls java.logging

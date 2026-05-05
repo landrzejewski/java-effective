@@ -6,128 +6,22 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 
-// =================================================================================================
-// Section 1: Race conditions
-// =================================================================================================
-
 /*
-## Race conditions
+Happens-before
 
-- A **race condition** is a bug where the correctness of a program depends on the
-unpredictable interleaving of threads.
-- The classic case is a *read–modify–write* sequence such as `count++`. Although it
-looks atomic, the JVM compiles it to three steps: load the value, add one, store the
-result. Two threads can both load `7`, both compute `8`, and both store `8` — the
-counter advances by 1 instead of 2.
-- *Check-then-act* (`if (!map.containsKey(k)) map.put(k, v);`) is the same family of
-bug: between the check and the act, another thread can change the answer.
-- Race conditions disappear when one of the following holds: the operation is truly
-atomic (an `Atomic*` class, or a single `volatile` write), or the section is
-protected by a lock that all racing threads acquire.
-*/
+The Java Memory Model defines a partial order called happens-before (HB). If action A happens-before action B, then B
+is guaranteed to see the effects of A. The most useful HB rules:
 
-// =================================================================================================
-// Section 2: Memory visibility
-// =================================================================================================
+1. Program order — within a single thread, statements happen-before later statements.
+2. Monitor lock — unlock on a monitor happens-before any subsequent lock on the same monitor (whether synchronized,
+   ReentrantLock, or any java.util.concurrent.locks.Lock).
+3. Volatile — a write to a volatile field happens-before every subsequent read of that same field by any thread.
+4. Thread start/join — Thread.start() happens-before any action in the new thread; every action in the new thread
+   happens-before join() returns.
+5. Final fields — the values written to final fields in a constructor are visible to any thread that observes the
+   constructed object via a properly published reference.
 
-/*
-## Memory visibility
-
-- Each CPU core has its own caches. Writes performed by one thread can sit in a
-cache line and remain invisible to another thread for an unbounded amount of time
-unless a synchronization mechanism flushes them.
-- The JIT compiler is also allowed to **reorder** independent statements as long as
-the as-if-serial rule is preserved on a single thread. From another thread's point
-of view, the order of two writes can appear reversed.
-- Without a happens-before relationship a reader can observe `ready == true` while
-still seeing the old value of `result` — even though the writer wrote `result`
-first in source order. This is the canonical "visibility problem".
-- The fix is to introduce an ordering: a `volatile` write/read pair, a lock, an
-`Atomic*` operation, or an `Executor` boundary.
-*/
-
-// =================================================================================================
-// Section 3: Happens-before
-// =================================================================================================
-
-/*
-## Happens-before
-
-The Java Memory Model defines a partial order called *happens-before* (HB). If
-action A happens-before action B, then B is guaranteed to see the effects of A.
-The most useful HB rules:
-
-1. **Program order** — within a single thread, statements happen-before later
-   statements.
-2. **Monitor lock** — `unlock` on a monitor happens-before any subsequent `lock` on
-   the same monitor (whether `synchronized`, `ReentrantLock`, or any
-   `java.util.concurrent.locks.Lock`).
-3. **Volatile** — a write to a `volatile` field happens-before every subsequent
-   read of that same field by any thread.
-4. **Thread start/join** — `Thread.start()` happens-before any action in the new
-   thread; every action in the new thread happens-before `join()` returns.
-5. **Final fields** — the values written to `final` fields in a constructor are
-   visible to any thread that observes the constructed object via a properly
-   published reference.
-
-If no HB chain links two actions, the JMM gives no guarantee about their relative
-ordering. *No HB = no visibility.*
-*/
-
-// =================================================================================================
-// Section 4: The volatile keyword
-// =================================================================================================
-
-/*
-## The volatile keyword
-
-- `volatile` guarantees **visibility** and **ordering** but NOT atomicity. A
-volatile read sees the most recent volatile write to that field, and the JMM
-forbids reordering loads/stores around the volatile access.
-- The canonical correct use is a **stop flag**: one thread writes `true`, another
-thread polls in a loop and exits when it sees `true`. Without `volatile` the JIT
-can hoist the read out of the loop and the worker spins forever.
-- `volatile` is wrong for any *read-modify-write* operation. `volatile int x; x++;`
-is not atomic — use `AtomicInteger` instead.
-- In modern Java, prefer an `Atomic*` reference or an explicit lock. `volatile` is
-mostly used today for one-way flags and lazy-init double-checked-locking idioms.
-*/
-
-// =================================================================================================
-// Section 5: Atomic classes
-// =================================================================================================
-
-/*
-## Atomic classes
-
-- The `java.util.concurrent.atomic` package provides lock-free wrappers around a
-single value: `AtomicInteger`, `AtomicLong`, `AtomicBoolean`, `AtomicReference<T>`,
-plus arrays and *FieldUpdater* variants.
-- All of them expose:
-  - `get()` / `set(v)` — volatile-style read/write.
-  - `incrementAndGet()`, `addAndGet(d)` — atomic numeric updates.
-  - `compareAndSet(expected, new)` — atomic conditional swap (CAS).
-  - `updateAndGet(unaryOp)` and `accumulateAndGet(value, binaryOp)` — atomic
-    transformations expressed as a lambda; the JVM retries on contention.
-- Internally these are implemented with a hardware CAS instruction (`cmpxchg` on
-x86, `ldxr/stxr` on ARM). They are typically faster than `synchronized` under low
-contention but degrade under heavy contention because of the retry loop.
-*/
-
-// =================================================================================================
-// Section 6: CAS in practice
-// =================================================================================================
-
-/*
-## CAS in practice
-
-- A CAS loop reads the current value, computes the next value, and tries
-`compareAndSet`. If another thread changed the field in between, the CAS fails and
-the loop retries.
-- This gives lock-free progress: at least one thread always makes forward progress
-on every iteration, and there are no monitors to deadlock on.
-- The pattern below ("update max") is too small to need a library helper, but it
-is the same skeleton as `AtomicInteger.updateAndGet(...)` internally.
+If no HB chain links two actions, the JMM gives no guarantee about their relative ordering. No HB = no visibility.
 */
 
 final class HighWaterMark {
@@ -144,44 +38,6 @@ final class HighWaterMark {
     int peek() { return max.get(); }
 }
 
-// =================================================================================================
-// Section 7: LongAdder vs AtomicLong
-// =================================================================================================
-
-/*
-## LongAdder vs AtomicLong
-
-- Under heavy contention, `AtomicLong` becomes a hotspot: every thread retries the
-same memory location until its CAS succeeds, producing cache-line ping-pong.
-- `LongAdder` (and `LongAccumulator`, `DoubleAdder`) maintain an array of internal
-cells striped across cores. Increments hash to a cell, so most updates do not
-collide. The downside is that reading the total (`sum()`) is no longer a single
-atomic read — if other threads are still updating, `sum()` can return a stale
-value.
-- Use `LongAdder` for high-throughput counters where the consumer reads
-infrequently (metrics, statistics). Use `AtomicLong` when you need a coherent
-read-modify-write on a single integer (e.g., generating sequence numbers).
-*/
-
-// =================================================================================================
-// Section 8: Atomic field updaters
-// =================================================================================================
-
-/*
-## Atomic field updaters
-
-- `AtomicIntegerFieldUpdater<T>`, `AtomicLongFieldUpdater<T>`,
-`AtomicReferenceFieldUpdater<T,V>` perform atomic updates on **plain fields** of
-existing classes via reflection.
-- The motivation is memory: with millions of small objects, switching every counter
-field to `AtomicInteger` adds an extra wrapper object per instance. A field
-updater performs CAS directly on the underlying `volatile int`, avoiding the
-allocation.
-- The field must be declared `volatile` and accessible from where the updater is
-created. Field updaters are an optimization — reach for them only when measurement
-shows the overhead matters.
-*/
-
 final class CountedNode {
     volatile int hits; // must be volatile for the field updater
     static final AtomicIntegerFieldUpdater<CountedNode> HITS =
@@ -189,31 +45,25 @@ final class CountedNode {
     void hit() { HITS.incrementAndGet(this); }
 }
 
-// =================================================================================================
-// Section 9: The final field freeze
-// =================================================================================================
-
-/*
-## The final field freeze
-
-- The JMM gives `final` fields a special guarantee: when a constructor finishes,
-the values written to `final` fields are visible to any thread that later sees a
-reference to the constructed object — *even without synchronization*.
-- This is why **immutable objects are inherently thread-safe**: an instance built
-of `final` fields whose state cannot change after construction can be passed
-around freely without locks.
-- The guarantee only holds if the reference does not escape the constructor before
-it returns. Storing `this` into a static field from inside the constructor (or
-publishing it to another thread) breaks the freeze.
-*/
-
 record Point(int x, int y) {} // immutable; safe to publish freely
 
 public final class Mod002MemoryModelAndAtomics {
 
     private Mod002MemoryModelAndAtomics() {}
 
-    // --- Section 1: race conditions (lost-update demo) ---
+    /*
+    Race conditions
+
+    - A race condition is a bug where the correctness of a program depends on the unpredictable interleaving of
+      threads.
+    - The classic case is a read–modify–write sequence such as count++. Although it looks atomic, the JVM compiles it
+      to three steps: load the value, add one, store the result. Two threads can both load 7, both compute 8, and both
+      store 8 — the counter advances by 1 instead of 2.
+    - Check-then-act (if (!map.containsKey(k)) map.put(k, v);) is the same family of bug: between the check and the
+      act, another thread can change the answer.
+    - Race conditions disappear when one of the following holds: the operation is truly atomic (an Atomic* class, or a
+      single volatile write), or the section is protected by a lock that all racing threads acquire.
+    */
     static void raceCondition() throws InterruptedException {
         System.out.println("[Section 1] race condition");
 
@@ -231,7 +81,18 @@ public final class Mod002MemoryModelAndAtomics {
                 + " (lost updates = " + (expected - counter.value) + ")");
     }
 
-    // --- Section 2: memory visibility ---
+    /*
+    Memory visibility
+
+    - Each CPU core has its own caches. Writes performed by one thread can sit in a cache line and remain invisible to
+      another thread for an unbounded amount of time unless a synchronization mechanism flushes them.
+    - The JIT compiler is also allowed to reorder independent statements as long as the as-if-serial rule is preserved
+      on a single thread. From another thread's point of view, the order of two writes can appear reversed.
+    - Without a happens-before relationship a reader can observe ready == true while still seeing the old value of
+      result — even though the writer wrote result first in source order. This is the canonical "visibility problem".
+    - The fix is to introduce an ordering: a volatile write/read pair, a lock, an Atomic* operation, or an Executor
+      boundary.
+    */
     static void memoryVisibility() throws InterruptedException {
         System.out.println("[Section 2] memory visibility");
 
@@ -257,7 +118,18 @@ public final class Mod002MemoryModelAndAtomics {
         reader.join();
     }
 
-    // --- Section 4: volatile stop flag ---
+    /*
+    The volatile keyword
+
+    - volatile guarantees visibility and ordering but NOT atomicity. A volatile read sees the most recent volatile
+      write to that field, and the JMM forbids reordering loads/stores around the volatile access.
+    - The canonical correct use is a stop flag: one thread writes true, another thread polls in a loop and exits when
+      it sees true. Without volatile the JIT can hoist the read out of the loop and the worker spins forever.
+    - volatile is wrong for any read-modify-write operation. volatile int x; x++; is not atomic — use AtomicInteger
+      instead.
+    - In modern Java, prefer an Atomic* reference or an explicit lock. volatile is mostly used today for one-way flags
+      and lazy-init double-checked-locking idioms.
+    */
     static void volatileStopFlag() throws InterruptedException {
         System.out.println("[Section 4] volatile stop flag");
 
@@ -277,7 +149,21 @@ public final class Mod002MemoryModelAndAtomics {
         t.join();
     }
 
-    // --- Section 5: atomic classes ---
+    /*
+    Atomic classes
+
+    - The java.util.concurrent.atomic package provides lock-free wrappers around a single value: AtomicInteger,
+      AtomicLong, AtomicBoolean, AtomicReference<T>, plus arrays and FieldUpdater variants.
+    - All of them expose:
+      - get() / set(v) — volatile-style read/write.
+      - incrementAndGet(), addAndGet(d) — atomic numeric updates.
+      - compareAndSet(expected, new) — atomic conditional swap (CAS).
+      - updateAndGet(unaryOp) and accumulateAndGet(value, binaryOp) — atomic transformations expressed as a lambda; the
+        JVM retries on contention.
+    - Internally these are implemented with a hardware CAS instruction (cmpxchg on x86, ldxr/stxr on ARM). They are
+      typically faster than synchronized under low contention but degrade under heavy contention because of the retry
+      loop.
+    */
     static void atomicClasses() throws InterruptedException {
         System.out.println("[Section 5] atomic classes");
 
@@ -297,7 +183,16 @@ public final class Mod002MemoryModelAndAtomics {
         System.out.println("  AtomicReference value = " + lastSeen.get());
     }
 
-    // --- Section 6: CAS in practice ---
+    /*
+    CAS in practice
+
+    - A CAS loop reads the current value, computes the next value, and tries compareAndSet. If another thread changed
+      the field in between, the CAS fails and the loop retries.
+    - This gives lock-free progress: at least one thread always makes forward progress on every iteration, and there
+      are no monitors to deadlock on.
+    - The pattern below ("update max") is too small to need a library helper, but it is the same skeleton as
+      AtomicInteger.updateAndGet(...) internally.
+    */
     static void casLoop() throws InterruptedException {
         System.out.println("[Section 6] CAS loop");
 
@@ -315,7 +210,17 @@ public final class Mod002MemoryModelAndAtomics {
         System.out.println("  high-water mark across 6 threads = " + hwm.peek());
     }
 
-    // --- Section 7: LongAdder vs AtomicLong ---
+    /*
+    LongAdder vs AtomicLong
+
+    - Under heavy contention, AtomicLong becomes a hotspot: every thread retries the same memory location until its
+      CAS succeeds, producing cache-line ping-pong.
+    - LongAdder (and LongAccumulator, DoubleAdder) maintain an array of internal cells striped across cores. Increments
+      hash to a cell, so most updates do not collide. The downside is that reading the total (sum()) is no longer a
+      single atomic read — if other threads are still updating, sum() can return a stale value.
+    - Use LongAdder for high-throughput counters where the consumer reads infrequently (metrics, statistics). Use
+      AtomicLong when you need a coherent read-modify-write on a single integer (e.g., generating sequence numbers).
+    */
     static void longAdderVsAtomicLong() throws InterruptedException {
         System.out.println("[Section 7] LongAdder vs AtomicLong");
 
@@ -337,7 +242,17 @@ public final class Mod002MemoryModelAndAtomics {
                 adder.sum(), elapsedAdder / 1_000_000.0);
     }
 
-    // --- Section 8: atomic field updater ---
+    /*
+    Atomic field updaters
+
+    - AtomicIntegerFieldUpdater<T>, AtomicLongFieldUpdater<T>, AtomicReferenceFieldUpdater<T,V> perform atomic updates
+      on plain fields of existing classes via reflection.
+    - The motivation is memory: with millions of small objects, switching every counter field to AtomicInteger adds an
+      extra wrapper object per instance. A field updater performs CAS directly on the underlying volatile int,
+      avoiding the allocation.
+    - The field must be declared volatile and accessible from where the updater is created. Field updaters are an
+      optimization — reach for them only when measurement shows the overhead matters.
+    */
     static void atomicFieldUpdater() throws InterruptedException {
         System.out.println("[Section 8] atomic field updater");
 
@@ -346,7 +261,16 @@ public final class Mod002MemoryModelAndAtomics {
         System.out.println("  CountedNode.hits = " + node.hits + " (no AtomicInteger wrapper allocated)");
     }
 
-    // --- Section 9: final field freeze ---
+    /*
+    The final field freeze
+
+    - The JMM gives final fields a special guarantee: when a constructor finishes, the values written to final fields
+      are visible to any thread that later sees a reference to the constructed object — even without synchronization.
+    - This is why immutable objects are inherently thread-safe: an instance built of final fields whose state cannot
+      change after construction can be passed around freely without locks.
+    - The guarantee only holds if the reference does not escape the constructor before it returns. Storing this into a
+      static field from inside the constructor (or publishing it to another thread) breaks the freeze.
+    */
     static void finalFieldFreeze() throws InterruptedException {
         System.out.println("[Section 9] final field freeze");
 

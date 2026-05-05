@@ -4,136 +4,6 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-// =================================================================================================
-// Section 1: Option<A>
-// =================================================================================================
-
-/*
-## Option<A>
-
-The "value or nothing" type:
-
-```
-sealed interface Option<A> permits Some, None {}
-record Some<A>(A value) implements Option<A> {}
-record None<A>()        implements Option<A> {}
-```
-
-- Replaces nullable returns when "absent" is a *normal* outcome.
-- Combinators: `map`, `flatMap`, `getOrElse`, `orElse`, `filter`.
-- Java's standard `Optional<A>` is the same idea; this module rolls its
-own to make the sealed-type pattern explicit and to compose with the
-custom `Either` and `Try` types below.
-*/
-
-// =================================================================================================
-// Section 2: Either<E, A>
-// =================================================================================================
-
-/*
-## Either<E, A>
-
-The "value or rich error" type:
-
-```
-sealed interface Either<E, A> permits Left, Right {}
-record Left<E, A>(E error) implements Either<E, A> {}
-record Right<E, A>(A value)  implements Either<E, A> {}
-```
-
-By convention `Right` is the success side; combinators (`map`, `flatMap`)
-operate on the right.
-
-Use it when "error" carries information you want the caller to react to —
-not just "absent" but a typed error value (`InvalidEmail`,
-`NotFound("user u-1")`, …).
-
-`flatMap` short-circuits on `Left`: the first failure in a chain is the
-final result. (Need accumulation? See Mod006.)
-*/
-
-// =================================================================================================
-// Section 3: Try<A>
-// =================================================================================================
-
-/*
-## Try<A>
-
-The "value or exception" type:
-
-```
-sealed interface Try<A> permits Success, Failure {}
-record Success<A>(A value)      implements Try<A> {}
-record Failure<A>(Throwable t)  implements Try<A> {}
-```
-
-`Try.of(supplier)` runs a throwing call and wraps the outcome.
-
-Use it at the boundary with Java APIs that throw (`Integer.parseInt`,
-file IO, `Class.forName`). Once the exception is in the `Try`, you can
-keep composing without writing `try`/`catch` everywhere.
-
-Beware: `Try` catches `Exception`, not `Error` — `OutOfMemoryError` and
-similar should still crash the program.
-*/
-
-// =================================================================================================
-// Section 4: When to pick which
-// =================================================================================================
-
-/*
-## When to pick which
-
-| Situation                              | Choose      |
-|----------------------------------------|-------------|
-| Key may be missing from a map          | Option      |
-| Validation produces a typed error      | Either      |
-| Parsing user input that may throw      | Try         |
-| Multiple errors must be aggregated     | Validation (Mod006) |
-
-For "an exception in disguise", prefer `Either` over `Try`: the error
-type is named and the caller can pattern-match on it. `Try` is the
-glue between the throwing world and the value world.
-*/
-
-// =================================================================================================
-// Section 5: Conversion bridges
-// =================================================================================================
-
-/*
-## Conversion bridges
-
-The three types are interchangeable when you have the data each one
-needs:
-
-- `Option.toEither(elseError)` — `None → Left(elseError)`,
-                                 `Some(x) → Right(x)`.
-- `Try.toEither(mapException)` — `Failure(t) → Left(mapException(t))`,
-                                 `Success(x) → Right(x)`.
-- `Either.toOption()`          — drops the error payload.
-
-These bridges let you choose the *most expressive* type per layer and
-adapt at the boundaries.
-*/
-
-// =================================================================================================
-// Section 6: End-to-end CRM lookup
-// =================================================================================================
-
-/*
-## End-to-end CRM lookup
-
-Three layered operations:
-
-- `findUserId(email)` — `Option<UserId>`.
-- `parseAge(rawString)` — `Try<Integer>`.
-- `loadProfile(userId)` — `Either<String, Profile>` (typed error).
-
-Compose them with `flatMap` into a single `Either<String, Profile>` that
-is `Right` only when all three steps succeeded; otherwise the first
-failure in the chain wins.
-*/
-
 public final class Mod005OptionEitherTry {
 
     private Mod005OptionEitherTry() {}
@@ -263,6 +133,20 @@ public final class Mod005OptionEitherTry {
     // Sections
     // =================================================================================================
 
+    /*
+    Option<A>
+
+    The "value or nothing" type:
+
+    sealed interface Option<A> permits Some, None {}
+    record Some<A>(A value) implements Option<A> {}
+    record None<A>()        implements Option<A> {}
+
+    - Replaces nullable returns when "absent" is a normal outcome.
+    - Combinators: map, flatMap, getOrElse, orElse, filter.
+    - Java's standard Optional<A> is the same idea; this module rolls its own to make the sealed-type pattern
+      explicit and to compose with the custom Either and Try types below.
+    */
     static void optionSection() {
         System.out.println("[Section 1] Option");
         Option<String> s = Option.some("hi");
@@ -271,6 +155,23 @@ public final class Mod005OptionEitherTry {
         System.out.println("  none.map(toUpper).getOrElse('?') = " + n.map(String::toUpperCase).getOrElse("?"));
     }
 
+    /*
+    Either<E, A>
+
+    The "value or rich error" type:
+
+    sealed interface Either<E, A> permits Left, Right {}
+    record Left<E, A>(E error) implements Either<E, A> {}
+    record Right<E, A>(A value)  implements Either<E, A> {}
+
+    By convention Right is the success side; combinators (map, flatMap) operate on the right.
+
+    Use it when "error" carries information you want the caller to react to — not just "absent" but a typed error
+    value (InvalidEmail, NotFound("user u-1"), …).
+
+    flatMap short-circuits on Left: the first failure in a chain is the final result. (Need accumulation? See
+    Mod006.)
+    */
     static void eitherSection() {
         System.out.println("[Section 2] Either");
         Either<String, Integer> r = Either.right(10);
@@ -280,6 +181,22 @@ public final class Mod005OptionEitherTry {
         System.out.println("  right.flatMap(>>0)= " + r.flatMap(x -> x > 0 ? Either.right(x) : Either.left("neg")));
     }
 
+    /*
+    Try<A>
+
+    The "value or exception" type:
+
+    sealed interface Try<A> permits Success, Failure {}
+    record Success<A>(A value)      implements Try<A> {}
+    record Failure<A>(Throwable t)  implements Try<A> {}
+
+    Try.of(supplier) runs a throwing call and wraps the outcome.
+
+    Use it at the boundary with Java APIs that throw (Integer.parseInt, file IO, Class.forName). Once the exception
+    is in the Try, you can keep composing without writing try/catch everywhere.
+
+    Beware: Try catches Exception, not Error — OutOfMemoryError and similar should still crash the program.
+    */
     static void trySection() {
         System.out.println("[Section 3] Try");
         Try<Integer> ok  = Try.of(() -> Integer.parseInt("42"));
@@ -288,6 +205,19 @@ public final class Mod005OptionEitherTry {
         System.out.println("  bad = " + bad.getClass().getSimpleName() + " (NumberFormatException)");
     }
 
+    /*
+    When to pick which
+
+      Situation                                Choose
+      ---------------------------------------- ----------------------
+      Key may be missing from a map            Option
+      Validation produces a typed error        Either
+      Parsing user input that may throw        Try
+      Multiple errors must be aggregated       Validation (Mod006)
+
+    For "an exception in disguise", prefer Either over Try: the error type is named and the caller can
+    pattern-match on it. Try is the glue between the throwing world and the value world.
+    */
     static void decisionMatrix() {
         System.out.println("[Section 4] decision matrix");
         System.out.println("  map lookup     -> Option");
@@ -296,6 +226,17 @@ public final class Mod005OptionEitherTry {
         System.out.println("  multiple errs  -> Validation (Mod006)");
     }
 
+    /*
+    Conversion bridges
+
+    The three types are interchangeable when you have the data each one needs:
+
+    - Option.toEither(elseError) — None → Left(elseError), Some(x) → Right(x).
+    - Try.toEither(mapException) — Failure(t) → Left(mapException(t)), Success(x) → Right(x).
+    - Either.toOption()          — drops the error payload.
+
+    These bridges let you choose the most expressive type per layer and adapt at the boundaries.
+    */
     static void conversionBridges() {
         System.out.println("[Section 5] conversion bridges");
         var idOption = findUserId("alice@example.com");
@@ -307,6 +248,18 @@ public final class Mod005OptionEitherTry {
         System.out.println("  Try    → Either: " + ageEither);
     }
 
+    /*
+    End-to-end CRM lookup
+
+    Three layered operations:
+
+    - findUserId(email) — Option<UserId>.
+    - parseAge(rawString) — Try<Integer>.
+    - loadProfile(userId) — Either<String, Profile> (typed error).
+
+    Compose them with flatMap into a single Either<String, Profile> that is Right only when all three steps
+    succeeded; otherwise the first failure in the chain wins.
+    */
     static void endToEnd() {
         System.out.println("[Section 6] end-to-end CRM lookup");
 

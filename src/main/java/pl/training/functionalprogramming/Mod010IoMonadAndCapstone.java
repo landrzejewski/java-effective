@@ -6,116 +6,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-// =================================================================================================
-// Section 1: Effects as values
-// =================================================================================================
-
-/*
-## Effects as values
-
-A side effect — print, read input, query a database — runs *now* in
-imperative code. The function signature does not warn the caller, and
-mocking it for tests requires DI tricks.
-
-The IO monad turns effects into **values**: instead of running them
-right away, you build a value that *describes* the effect. The program's
-edge (`main`) is the only place that actually executes the description
-by calling `unsafeRun()`.
-
-This buys two things:
-- explicit purity boundary — pure code returns IO; impure code runs IO,
-- testability — substitute a different `unsafeRun()` (or a different IO
-  description) without changing pure code.
-*/
-
-// =================================================================================================
-// Section 2: IO<A>
-// =================================================================================================
-
-/*
-## IO<A>
-
-```
-interface IO<A> {
-    A unsafeRun();
-    default <B> IO<B> map(Function<A, B> f);
-    default <B> IO<B> flatMap(Function<A, IO<B>> f);
-    static <A> IO<A> pure(A value);
-    static IO<Unit> effect(Runnable r);
-}
-```
-
-`unsafeRun()` is the boundary that "lights the fuse". Composing IOs
-produces another IO; nothing actually fires until that final call.
-
-For deep `flatMap` chains a real IO type would trampoline; ours is
-small so we keep it simple.
-*/
-
-// =================================================================================================
-// Section 3: Why bother in Java
-// =================================================================================================
-
-/*
-## Why bother in Java
-
-- **Explicit dataflow** — the type tells you "this method does IO"; the
-  return value tells you "the IO has not happened yet".
-- **Testing** — substitute a recording `unsafeRun()` that captures the
-  description; assert on the captured operations instead of trapping
-  console output.
-- **Composition** — `map`/`flatMap` produce richer IOs from smaller
-  ones. The whole game in Section 4 is one `IO<Outcome>` value.
-
-Real-world IO (Cats Effect, ZIO) adds cancellation, async, fibers, and
-resource management. The core idea — "describe, then run" — is the same.
-*/
-
-// =================================================================================================
-// Section 4: A tiny tic-tac-toe
-// =================================================================================================
-
-/*
-## A tiny tic-tac-toe
-
-The capstone uses every prior technique:
-
-- **Sealed types** for `Player`, `Cell`, `GameState` (Mod005, Mod006).
-- **Pattern matching** for game-logic case analysis (Mod006, Mod009).
-- **Persistent data** for the board — a `List<List<Cell>>`; every move
-  returns a new board, the old one is unchanged (Mod004).
-- **Recursion + folds** to walk rows / columns / diagonals (Mod003).
-- **Option** for "winner found?" lookups (Mod005).
-- **IO monad** for input ("the next move") and output (printing the
-  board); fakes the input from a fixed list of moves so the demo is
-  deterministic.
-
-The whole game is a single `IO<Outcome>` value built once and run once.
-*/
-
-// =================================================================================================
-// Section 5: Capstone composition — explicit pointers
-// =================================================================================================
-
-/*
-## Capstone composition — explicit pointers
-
-The code below is the closing summary; each piece is annotated with the
-prior module that introduced it. Read as a study guide.
-*/
-
-// =================================================================================================
-// Section 6: End-to-end self-check
-// =================================================================================================
-
-/*
-## End-to-end self-check
-
-Replay a fixed sequence of moves; assert the game ended with the
-expected `Outcome`. The replay is determined by the input list, so the
-self-check is repeatable.
-*/
-
 public final class Mod010IoMonadAndCapstone {
 
     private Mod010IoMonadAndCapstone() {}
@@ -280,6 +170,20 @@ public final class Mod010IoMonadAndCapstone {
     // Sections
     // =================================================================================================
 
+    /*
+    Effects as values
+
+    A side effect — print, read input, query a database — runs now in imperative code. The function signature does
+    not warn the caller, and mocking it for tests requires DI tricks.
+
+    The IO monad turns effects into values: instead of running them right away, you build a value that describes
+    the effect. The program's edge (main) is the only place that actually executes the description by calling
+    unsafeRun().
+
+    This buys two things:
+    - explicit purity boundary — pure code returns IO; impure code runs IO,
+    - testability — substitute a different unsafeRun() (or a different IO description) without changing pure code.
+    */
     static void effectsAsValues() {
         System.out.println("[Section 1] effects as values");
         var doNothingYet = IO.effect(() -> System.out.println("  effect ran"));
@@ -287,6 +191,22 @@ public final class Mod010IoMonadAndCapstone {
         doNothingYet.unsafeRun();
     }
 
+    /*
+    IO<A>
+
+    interface IO<A> {
+        A unsafeRun();
+        default <B> IO<B> map(Function<A, B> f);
+        default <B> IO<B> flatMap(Function<A, IO<B>> f);
+        static <A> IO<A> pure(A value);
+        static IO<Unit> effect(Runnable r);
+    }
+
+    unsafeRun() is the boundary that "lights the fuse". Composing IOs produces another IO; nothing actually fires
+    until that final call.
+
+    For deep flatMap chains a real IO type would trampoline; ours is small so we keep it simple.
+    */
     static void ioComposition() {
         System.out.println("[Section 2] IO composition");
         var program = IO.pure(2)
@@ -295,6 +215,19 @@ public final class Mod010IoMonadAndCapstone {
         System.out.println("  program.unsafeRun() = " + program.unsafeRun());
     }
 
+    /*
+    Why bother in Java
+
+    - Explicit dataflow — the type tells you "this method does IO"; the return value tells you "the IO has not
+      happened yet".
+    - Testing — substitute a recording unsafeRun() that captures the description; assert on the captured operations
+      instead of trapping console output.
+    - Composition — map/flatMap produce richer IOs from smaller ones. The whole game in Section 4 is one
+      IO<Outcome> value.
+
+    Real-world IO (Cats Effect, ZIO) adds cancellation, async, fibers, and resource management. The core idea —
+    "describe, then run" — is the same.
+    */
     static void whyBother() {
         System.out.println("[Section 3] why bother in Java");
         var captured = new AtomicReference<>(new ArrayList<String>());
@@ -304,6 +237,27 @@ public final class Mod010IoMonadAndCapstone {
         System.out.println("  captured effect order = " + captured.get());
     }
 
+    /*
+    A tiny tic-tac-toe
+
+    The capstone uses every prior technique:
+
+    - Sealed types for Player, Cell, GameState (Mod005, Mod006).
+    - Pattern matching for game-logic case analysis (Mod006, Mod009).
+    - Persistent data for the board — a List<List<Cell>>; every move returns a new board, the old one is unchanged
+      (Mod004).
+    - Recursion + folds to walk rows / columns / diagonals (Mod003).
+    - Option for "winner found?" lookups (Mod005).
+    - IO monad for input ("the next move") and output (printing the board); fakes the input from a fixed list of
+      moves so the demo is deterministic.
+
+    The whole game is a single IO<Outcome> value built once and run once.
+
+    Capstone composition — explicit pointers
+
+    The code below is the closing summary; each piece is annotated with the prior module that introduced it. Read
+    as a study guide.
+    */
     static void capstoneGame() {
         System.out.println("[Section 4-5] capstone game (replayed deterministically)");
 
@@ -323,6 +277,12 @@ public final class Mod010IoMonadAndCapstone {
         System.out.println("  outcome = " + outcome);
     }
 
+    /*
+    End-to-end self-check
+
+    Replay a fixed sequence of moves; assert the game ended with the expected Outcome. The replay is determined by
+    the input list, so the self-check is repeatable.
+    */
     static void endToEnd() {
         System.out.println("[Section 6] capstone self-check");
 

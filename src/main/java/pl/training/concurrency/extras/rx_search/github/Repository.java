@@ -1,13 +1,7 @@
 package pl.training.concurrency.extras.rx_search.github;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import lombok.Data;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-@Data
-public class Repository {
-
-    private String name;
-    private String description;
-
+public record Repository(String name, String description) {
 }

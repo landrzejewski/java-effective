@@ -1,6 +1,5 @@
 package pl.training.concurrency.extras.chat_v2;
 
-import lombok.extern.java.Log;
 import pl.training.concurrency.extras.chat_v2.commons.Sockets;
 import pl.training.concurrency.extras.chat_v2.commons.TextReader;
 import pl.training.concurrency.extras.chat_v2.commons.TextWriter;
@@ -8,9 +7,11 @@ import pl.training.concurrency.extras.chat_v2.commons.TextWriter;
 import java.io.IOException;
 import java.net.Socket;
 import java.util.UUID;
+import java.util.logging.Logger;
 
-@Log
 public class ChatClient {
+
+    private static final Logger log = Logger.getLogger(ChatClient.class.getName());
 
     private static final int DEFAULT_PORT = 8888;
 

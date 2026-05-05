@@ -4,153 +4,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// =================================================================================================
-// Section 1: Records 30-second recap
-// =================================================================================================
-
-/*
-## Records 30-second recap
-
-A `record` is an immutable data carrier:
-
-```java
-record Point(int x, int y) {}
-```
-
-The compiler synthesises:
-- a canonical constructor (`Point(int x, int y)`),
-- accessor methods (`x()`, `y()`),
-- `equals` / `hashCode` based on all components,
-- `toString()` like `Point[x=1, y=2]`.
-
-Records are implicitly `final`. They can implement interfaces and add `static`
-or `default` methods, but they have no mutable state. The component names are
-part of the API — used both by accessors and by record patterns (§2).
-*/
-
-// =================================================================================================
-// Section 2: Record patterns (Java 21)
-// =================================================================================================
-
-/*
-## Record patterns (Java 21)
-
-A *record pattern* destructures a record:
-
-```java
-case Point(int x, int y) -> ...
-```
-
-- The components are matched in canonical order (the order declared in the
-  record header).
-- Each sub-pattern can itself be a type pattern (`int x`), another record
-  pattern (nested), or `var name` for type-inferred bindings.
-- The whole record pattern matches if the value `instanceof` the record AND
-  every nested sub-pattern matches.
-*/
-
-// =================================================================================================
-// Section 3: Nested record patterns
-// =================================================================================================
-
-/*
-## Nested record patterns
-
-```java
-case Line(Point(int x1, int y1), Point(int x2, int y2)) -> ...
-```
-
-You can deconstruct several levels in a single pattern. Anywhere a sub-pattern
-appears, you may use:
-- a record pattern (deeper deconstruction),
-- a type pattern (`SomeType name`),
-- `var name` (infer the type, just bind),
-- the unnamed pattern `_` (§6).
-
-Combine with guards (`when`) and the result is a one-line case that does the
-work of half a dozen `if`s.
-*/
-
-// =================================================================================================
-// Section 4: Sealed interfaces + permits
-// =================================================================================================
-
-/*
-## Sealed interfaces + permits
-
-A `sealed interface` declares a closed set of permitted subtypes:
-
-```java
-sealed interface Json permits JsonNull, JsonBool, JsonNumber,
-                              JsonString, JsonArray, JsonObject {}
-```
-
-Each permitted subtype must declare its kind: `final` (a leaf), `sealed`
-(another closed branch), or `non-sealed` (re-opens to anyone). Most ADTs use
-records for the leaves — they are implicitly `final`, equality is structural,
-and they pair perfectly with record patterns.
-
-The pay-off in pattern matching: a switch over the sealed type with one case
-per permitted subtype is automatically exhaustive — no `default` needed, and
-adding a new subtype is a compile error in every existing switch.
-*/
-
-// =================================================================================================
-// Section 5: Algebraic data types in Java
-// =================================================================================================
-
-/*
-## Algebraic data types in Java
-
-`sealed` + `record` is Java's idiomatic ADT encoding. Pattern matching is the
-natural eliminator: each case handles one variant and gets its components
-deconstructed in the head.
-
-The same logic in classic Java would use the **visitor pattern** — three
-interfaces, several `accept`/`visit` overloads, a new `visit` method on every
-visitor every time a variant is added. Pattern matching collapses all of that
-into a single switch expression.
-*/
-
-// =================================================================================================
-// Section 6: Unnamed patterns and variables (Java 22)
-// =================================================================================================
-
-/*
-## Unnamed patterns and variables (Java 22+)
-
-`_` in a record pattern says "match this slot, but I do not need to bind a
-name to it":
-
-```java
-case Point(int x, _) -> "x is " + x;
-```
-
-Same thing for local variables in `try`/`catch` and lambda parameters when
-you accept an argument you do not use:
-
-```java
-try { ... } catch (NumberFormatException _) { return -1; }
-list.forEach(_ -> counter.increment());
-```
-
-Use it whenever a name would only confuse the reader. Since the introduction
-of unnamed variables in Java 22, the alternative — picking
-half-meaningless names like `ignored` or `unused` — has no advantage left.
-*/
-
-// =================================================================================================
-// Section 7: Real-world walk — pretty-printer
-// =================================================================================================
-
-/*
-## Real-world walk — pretty-printer
-
-A single switch expression produces a pretty-printed JSON string by recursing
-through the AST. No `default`, no `instanceof` chain, no visitor — just one
-case per permitted subtype, each deconstructing its components.
-*/
-
 public final class Mod010RecordsSealedAndUnnamedPatterns {
 
     private Mod010RecordsSealedAndUnnamedPatterns() {}
@@ -175,7 +28,22 @@ public final class Mod010RecordsSealedAndUnnamedPatterns {
         return new JsonObject(user);
     }
 
-    // --- Section 1: records recap ---
+    /*
+    Records 30-second recap
+
+    A record is an immutable data carrier:
+
+    record Point(int x, int y) {}
+
+    The compiler synthesises:
+    - a canonical constructor (Point(int x, int y)),
+    - accessor methods (x(), y()),
+    - equals / hashCode based on all components,
+    - toString() like Point[x=1, y=2].
+
+    Records are implicitly final. They can implement interfaces and add static or default methods, but they have no
+    mutable state. The component names are part of the API — used both by accessors and by record patterns (§2).
+    */
     static void recordsRecap() {
         System.out.println("[Section 1] records recap");
 
@@ -185,7 +53,18 @@ public final class Mod010RecordsSealedAndUnnamedPatterns {
         System.out.println("  equality    = " + new JsonNumber(42).equals(num));
     }
 
-    // --- Section 2: record patterns ---
+    /*
+    Record patterns (Java 21)
+
+    A record pattern destructures a record:
+
+    case Point(int x, int y) -> ...
+
+    - The components are matched in canonical order (the order declared in the record header).
+    - Each sub-pattern can itself be a type pattern (int x), another record pattern (nested), or var name for
+      type-inferred bindings.
+    - The whole record pattern matches if the value instanceof the record AND every nested sub-pattern matches.
+    */
     static void recordPatterns() {
         System.out.println("[Section 2] record patterns");
 
@@ -207,7 +86,19 @@ public final class Mod010RecordsSealedAndUnnamedPatterns {
         }
     }
 
-    // --- Section 3: nested record patterns ---
+    /*
+    Nested record patterns
+
+    case Line(Point(int x1, int y1), Point(int x2, int y2)) -> ...
+
+    You can deconstruct several levels in a single pattern. Anywhere a sub-pattern appears, you may use:
+    - a record pattern (deeper deconstruction),
+    - a type pattern (SomeType name),
+    - var name (infer the type, just bind),
+    - the unnamed pattern _ (§6).
+
+    Combine with guards (when) and the result is a one-line case that does the work of half a dozen ifs.
+    */
     static void nestedRecordPatterns() {
         System.out.println("[Section 3] nested record patterns");
 
@@ -237,7 +128,22 @@ public final class Mod010RecordsSealedAndUnnamedPatterns {
         System.out.println("  length = " + length);
     }
 
-    // --- Section 4: sealed + exhaustive switch (no default needed) ---
+    /*
+    Sealed interfaces + permits
+
+    A sealed interface declares a closed set of permitted subtypes:
+
+    sealed interface Json permits JsonNull, JsonBool, JsonNumber,
+                                  JsonString, JsonArray, JsonObject {}
+
+    Each permitted subtype must declare its kind: final (a leaf), sealed (another closed branch), or non-sealed
+    (re-opens to anyone). Most ADTs use records for the leaves — they are implicitly final, equality is structural,
+    and they pair perfectly with record patterns.
+
+    The pay-off in pattern matching: a switch over the sealed type with one case per permitted subtype is
+    automatically exhaustive — no default needed, and adding a new subtype is a compile error in every existing
+    switch.
+    */
     static String render(Json j) {
         return switch (j) {
             case JsonNull()                       -> "null";
@@ -273,7 +179,16 @@ public final class Mod010RecordsSealedAndUnnamedPatterns {
         System.out.println("  rendered = " + render(sample()));
     }
 
-    // --- Section 5: ADT — counting nodes by kind, single switch ---
+    /*
+    Algebraic data types in Java
+
+    sealed + record is Java's idiomatic ADT encoding. Pattern matching is the natural eliminator: each case handles
+    one variant and gets its components deconstructed in the head.
+
+    The same logic in classic Java would use the visitor pattern — three interfaces, several accept/visit overloads,
+    a new visit method on every visitor every time a variant is added. Pattern matching collapses all of that into a
+    single switch expression.
+    */
     static void adtNodeCount() {
         System.out.println("[Section 5] ADT — count nodes by kind");
 
@@ -298,7 +213,21 @@ public final class Mod010RecordsSealedAndUnnamedPatterns {
         counts.merge(key, 1, Integer::sum);
     }
 
-    // --- Section 6: unnamed patterns ---
+    /*
+    Unnamed patterns and variables (Java 22+)
+
+    _ in a record pattern says "match this slot, but I do not need to bind a name to it":
+
+    case Point(int x, _) -> "x is " + x;
+
+    Same thing for local variables in try/catch and lambda parameters when you accept an argument you do not use:
+
+    try { ... } catch (NumberFormatException _) { return -1; }
+    list.forEach(_ -> counter.increment());
+
+    Use it whenever a name would only confuse the reader. Since the introduction of unnamed variables in Java 22,
+    the alternative — picking half-meaningless names like ignored or unused — has no advantage left.
+    */
     static void unnamedPatterns() {
         System.out.println("[Section 6] unnamed patterns");
 
@@ -323,7 +252,12 @@ public final class Mod010RecordsSealedAndUnnamedPatterns {
         }
     }
 
-    // --- Section 7: real-world walk ---
+    /*
+    Real-world walk — pretty-printer
+
+    A single switch expression produces a pretty-printed JSON string by recursing through the AST. No default, no
+    instanceof chain, no visitor — just one case per permitted subtype, each deconstructing its components.
+    */
     static void prettyPrinter() {
         System.out.println("[Section 7] pretty-printer");
         System.out.println("  " + render(sample()));

@@ -7,118 +7,25 @@ import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-// =================================================================================================
-// Section 1: What a parser combinator is
-// =================================================================================================
-
 /*
-## What a parser combinator is
+What a parser combinator is
 
-- A *parser combinator* is a function `String -> Result<T>` that either
-consumes a prefix of the input and produces a value, or fails.
-- Instead of writing a recursive-descent parser by hand or relying on a
-parser generator (ANTLR, JavaCC), you build bigger parsers from smaller
-ones with first-class combinators (`and`, `or`, `many`, `map`).
-- Pay-off: parsers are values you can store, name, and unit-test
-individually. The grammar lives in code, in the same file as the AST it
-produces.
-- This module is a port of the Parsec/Combine idea, applied to a tiny
-calculator language with variables, function calls, and the usual
-operator precedence.
-*/
+- A parser combinator is a function String -> Result<T> that either consumes a prefix of the input and produces a
+  value, or fails.
+- Instead of writing a recursive-descent parser by hand or relying on a parser generator (ANTLR, JavaCC), you build
+  bigger parsers from smaller ones with first-class combinators (and, or, many, map).
+- Pay-off: parsers are values you can store, name, and unit-test individually. The grammar lives in code, in the
+  same file as the AST it produces.
+- This module is a port of the Parsec/Combine idea, applied to a tiny calculator language with variables, function
+  calls, and the usual operator precedence.
 
-// =================================================================================================
-// Section 2: Parser<T> and Result<T>
-// =================================================================================================
+Parser<T> and Result<T>
 
-/*
-## Parser<T> and Result<T>
-
-- `Result<T>` is a sealed interface with two cases:
-  - `Success(value, remaining)` — the parser consumed some prefix and
-    yielded `value`.
-  - `Failure(expected, remaining)` — the parser refused; `expected`
-    describes what it would have accepted.
-- `Parser<T>` is `Function<String, Result<T>>` plus default helper methods
-  for the combinators below. Making it a `@FunctionalInterface` lets you
-  write atomic parsers as lambdas.
-*/
-
-// =================================================================================================
-// Section 3: Atomic parsers
-// =================================================================================================
-
-/*
-## Atomic parsers
-
-Building blocks at the character / token level: `chr`, `str`, `digit`,
-`letter`, `whitespace`. Each consumes at most one prefix of the input and
-returns a `Success` or a `Failure`.
-*/
-
-// =================================================================================================
-// Section 4: Combinators
-// =================================================================================================
-
-/*
-## Combinators
-
-- `and(other)`        — sequence; both must succeed.
-- `or(alternative)`   — try this first, if it fails try the alternative.
-- `map(fn)`           — transform the produced value.
-- `flatMap(fn)`       — chain a parser whose shape depends on the previous
-                        result.
-- `many()`            — zero-or-more, returns `List<T>`.
-- `many1()`           — one-or-more.
-- `separatedBy(sep)`  — list separated by `sep`; trailing `sep` not
-                        permitted.
-- `between(open, close)` — wrap a parser in delimiters.
-- `optional(default)` — backtracks on failure, returns the default value.
-- `lazy(supplier)`    — defers parser construction; needed for recursive
-                        grammars ("the right-hand side of `+` is itself an
-                        expression").
-*/
-
-// =================================================================================================
-// Section 5: Operator precedence (chainl1)
-// =================================================================================================
-
-/*
-## Operator precedence (chainl1)
-
-- `chainl1(operand, opParser)` parses one or more `operand`s separated by
-parsed operators, folding the result *left-associatively*.
-- Builds the standard precedence stack: factor `* /` before term `+ -`,
-both above the atom level (numbers, variables, parenthesised
-expressions).
-- This is the trick every infix-operator parser uses; baking it into a
-combinator makes the grammar fit on one screen.
-*/
-
-// =================================================================================================
-// Section 6: AST + evaluator
-// =================================================================================================
-
-/*
-## AST + evaluator
-
-- The parser does not evaluate. It produces an immutable
-`Expr` AST; `eval(Expr, env)` walks the tree.
-- Splitting parsing from evaluation lets you serialise, optimise, or
-re-target the same AST. In a real DSL the same AST might be evaluated
-by a JIT, transformed into SQL, or pretty-printed.
-*/
-
-// =================================================================================================
-// Section 7: End-to-end
-// =================================================================================================
-
-/*
-## End-to-end
-
-- Parse and evaluate a handful of expressions, including variables and
-function calls. Compare each result against an independent reference
-computation; print the AST and the value side by side.
+- Result<T> is a sealed interface with two cases:
+  - Success(value, remaining) — the parser consumed some prefix and yielded value.
+  - Failure(expected, remaining) — the parser refused; expected describes what it would have accepted.
+- Parser<T> is Function<String, Result<T>> plus default helper methods for the combinators below. Making it a
+  @FunctionalInterface lets you write atomic parsers as lambdas.
 */
 
 public final class Mod007ParserCombinators {
@@ -368,6 +275,12 @@ public final class Mod007ParserCombinators {
     // Sections
     // =================================================================================================
 
+    /*
+    Atomic parsers
+
+    Building blocks at the character / token level: chr, str, digit, letter, whitespace. Each consumes at most one
+    prefix of the input and returns a Success or a Failure.
+    */
     static void atomicParsers() {
         System.out.println("[Section 3] atomic parsers");
         System.out.println("  digit('1abc')          = " + digit.apply("1abc"));
@@ -375,6 +288,21 @@ public final class Mod007ParserCombinators {
         System.out.println("  str('let')('let x')    = " + str("let").apply("let x"));
     }
 
+    /*
+    Combinators
+
+    - and(other)        — sequence; both must succeed.
+    - or(alternative)   — try this first, if it fails try the alternative.
+    - map(fn)           — transform the produced value.
+    - flatMap(fn)       — chain a parser whose shape depends on the previous result.
+    - many()            — zero-or-more, returns List<T>.
+    - many1()           — one-or-more.
+    - separatedBy(sep)  — list separated by sep; trailing sep not permitted.
+    - between(open, close) — wrap a parser in delimiters.
+    - optional(default) — backtracks on failure, returns the default value.
+    - lazy(supplier)    — defers parser construction; needed for recursive grammars ("the right-hand side of + is
+                          itself an expression").
+    */
     static void combinatorsDemo() {
         System.out.println("[Section 4] combinators");
         Parser<List<Character>> digits = digit.many1();
@@ -388,6 +316,16 @@ public final class Mod007ParserCombinators {
         System.out.println("  separatedBy = " + commaSeparated.apply("1,2,3,xy"));
     }
 
+    /*
+    Operator precedence (chainl1)
+
+    - chainl1(operand, opParser) parses one or more operands separated by parsed operators, folding the result
+      left-associatively.
+    - Builds the standard precedence stack: factor * / before term + -, both above the atom level (numbers,
+      variables, parenthesised expressions).
+    - This is the trick every infix-operator parser uses; baking it into a combinator makes the grammar fit on one
+      screen.
+    */
     static void operatorPrecedenceDemo() {
         System.out.println("[Section 5] operator precedence");
         Result<Expr> r = expr.apply("1 + 2 * 3");
@@ -395,6 +333,13 @@ public final class Mod007ParserCombinators {
         // Expected:  Bin(+, Num(1), Bin(*, Num(2), Num(3)))
     }
 
+    /*
+    AST + evaluator
+
+    - The parser does not evaluate. It produces an immutable Expr AST; eval(Expr, env) walks the tree.
+    - Splitting parsing from evaluation lets you serialise, optimise, or re-target the same AST. In a real DSL the
+      same AST might be evaluated by a JIT, transformed into SQL, or pretty-printed.
+    */
     static void astAndEval() {
         System.out.println("[Section 6] AST + evaluator");
         var env = Map.of("pi", Math.PI, "r", 4.0);
@@ -405,6 +350,12 @@ public final class Mod007ParserCombinators {
         }
     }
 
+    /*
+    End-to-end
+
+    - Parse and evaluate a handful of expressions, including variables and function calls. Compare each result
+      against an independent reference computation; print the AST and the value side by side.
+    */
     static void endToEnd() {
         System.out.println("[Section 7] end-to-end with reference assertions");
         var env = Map.of("pi", Math.PI, "r", 4.0, "x", 7.0, "y", 3.0);

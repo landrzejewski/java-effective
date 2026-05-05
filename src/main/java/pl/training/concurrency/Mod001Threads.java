@@ -3,46 +3,18 @@ package pl.training.concurrency;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-// =================================================================================================
-// Section 1: What is a thread
-// =================================================================================================
-
 /*
-## What is a thread
+What is a thread
 
-- A **process** is an isolated unit of execution managed by the operating system,
-with its own address space and resources.
-- A **thread** is the smallest unit the operating system can schedule. Multiple
-threads share the address space of the process they belong to: heap, loaded classes,
-file descriptors, etc.
-- Every JVM starts with one foreground thread named `main`. The JVM exits when all
-non-daemon threads have terminated.
-- Threads enable **concurrency** (progress on multiple tasks logically at once) and
-**parallelism** (actual simultaneous execution on multiple CPU cores).
-- The JVM exposes platform threads as a thin wrapper over OS threads. They are
-preemptively scheduled by the OS — your code does not control when a context switch
-happens, so any shared state read or written without synchronization can be observed
-in arbitrary order.
-*/
-
-// =================================================================================================
-// Section 2: Creating threads
-// =================================================================================================
-
-/*
-## Creating threads
-
-- The idiomatic way to define a task is to implement `Runnable` (or `Callable<V>` if
-the task returns a value) and pass it to a `Thread`. This separates *what* the task
-does from *how* it is run.
-- Subclassing `Thread` and overriding `run()` is legal but discouraged: it couples
-the task with the thread, prevents extending another class, and confuses readers
-about the lifetime of the task.
-- Java 21 added a fluent builder via `Thread.ofPlatform()`. It supports `.name(...)`,
-`.daemon(...)`, `.priority(...)`, and `.start(Runnable)`. There is also `Thread.ofVirtual()`
-for virtual threads — covered in detail in `Mod011VirtualThreads`.
-- A `Thread` instance can be started exactly once. Calling `start()` on an already
-started thread throws `IllegalThreadStateException`.
+- A process is an isolated unit of execution managed by the operating system, with its own address space and resources.
+- A thread is the smallest unit the operating system can schedule. Multiple threads share the address space of the
+  process they belong to: heap, loaded classes, file descriptors, etc.
+- Every JVM starts with one foreground thread named main. The JVM exits when all non-daemon threads have terminated.
+- Threads enable concurrency (progress on multiple tasks logically at once) and parallelism (actual simultaneous
+  execution on multiple CPU cores).
+- The JVM exposes platform threads as a thin wrapper over OS threads. They are preemptively scheduled by the OS — your
+  code does not control when a context switch happens, so any shared state read or written without synchronization can
+  be observed in arbitrary order.
 */
 
 final class HeartbeatTask implements Runnable {
@@ -58,121 +30,6 @@ final class HeartbeatTask implements Runnable {
         }
     }
 }
-
-// =================================================================================================
-// Section 3: Thread.start vs Thread.run
-// =================================================================================================
-
-/*
-## Thread.start vs Thread.run
-
-- `start()` schedules the thread for execution by the JVM/OS. The new thread is
-created, and the JVM eventually calls `run()` on it.
-- Calling `run()` directly is just an ordinary method call on the **current** thread.
-No new thread is created. Beginners who write `t.run()` instead of `t.start()` get
-sequential execution and miss any concurrency at all.
-*/
-
-// =================================================================================================
-// Section 4: Thread states
-// =================================================================================================
-
-/*
-## Thread states
-
-The `Thread.State` enum has six values:
-
-- `NEW` — created but not yet started.
-- `RUNNABLE` — eligible to run; either executing or waiting for CPU.
-- `BLOCKED` — waiting to acquire an intrinsic lock held by another thread.
-- `WAITING` — waiting indefinitely for another thread (`Object.wait`, `Thread.join`,
-`LockSupport.park`).
-- `TIMED_WAITING` — waiting for a bounded amount of time
-(`Thread.sleep`, `Object.wait(timeout)`, `Thread.join(timeout)`).
-- `TERMINATED` — the `run` method has returned (normally or by exception).
-
-`Thread.getState()` is a snapshot, intended for monitoring and diagnostics. It must
-not be used to make synchronization decisions because the state can change between
-the read and the next instruction.
-*/
-
-// =================================================================================================
-// Section 5: Daemon vs user threads
-// =================================================================================================
-
-/*
-## Daemon vs user threads
-
-- A **user (foreground) thread** keeps the JVM alive — it will not exit while any
-user thread is still running.
-- A **daemon (background) thread** does not. When only daemon threads remain, the
-JVM shuts down without waiting for them.
-- `setDaemon(true)` must be called before `start()`. Calling it on a running thread
-throws `IllegalThreadStateException`.
-- A daemon thread inherits its daemon status when forking another thread. Daemon
-threads are cut off abruptly at JVM exit — do not use them for work that must
-complete (writing files, flushing buffers).
-- Typical uses: heartbeats, telemetry pumps, GC-like background workers — anything
-where being terminated mid-task is acceptable.
-*/
-
-// =================================================================================================
-// Section 6: Thread.sleep and InterruptedException
-// =================================================================================================
-
-/*
-## Thread.sleep and InterruptedException
-
-- `Thread.sleep(millis)` parks the current thread for at least the given duration
-(it can sleep longer; precision is OS-dependent). The thread does not release any
-locks it holds — never sleep while holding a contended monitor.
-- `Thread.sleep` declares the **checked** `InterruptedException`. When another
-thread calls `t.interrupt()` on a sleeping thread, the JVM wakes it up and throws
-`InterruptedException`, **clearing** the interrupt flag.
-- If you cannot propagate `InterruptedException` (e.g., inside a `Runnable.run`),
-you should restore the flag with `Thread.currentThread().interrupt()` so callers
-higher up in the stack still see the cancellation request.
-- Swallowing `InterruptedException` silently is the single most common cancellation
-bug in Java code.
-*/
-
-// =================================================================================================
-// Section 7: Joining threads
-// =================================================================================================
-
-/*
-## Joining threads
-
-- `t.join()` blocks the calling thread until `t` has terminated. It establishes a
-*happens-before* edge: every action in `t` is visible to the caller after `join()`
-returns.
-- `t.join(millis)` waits at most `millis` milliseconds and then returns whether or
-not `t` finished. Always check `t.isAlive()` after a timed join if you need to know.
-- A thread can also be joined with a `Duration` since Java 19:
-`t.join(Duration.ofSeconds(5))`.
-- `join` does not request termination — it only waits. To stop a worker that is
-still running you must signal it (interrupt or set a flag). See section 8.
-*/
-
-// =================================================================================================
-// Section 8: Cooperative cancellation (the interrupt protocol)
-// =================================================================================================
-
-/*
-## Cooperative cancellation (the interrupt protocol)
-
-- Java has no safe forced stop. `Thread.stop()` is removed in modern JDKs because
-it could leave shared state in an inconsistent half-modified shape.
-- Cancellation is **cooperative**: the requester sets the interrupt flag with
-`t.interrupt()`, and the worker is responsible for noticing it and exiting.
-- The worker checks `Thread.currentThread().isInterrupted()` in its main loop, and
-catches `InterruptedException` from blocking calls (`sleep`, `wait`, `join`, queue
-operations) — both are signals to wind down.
-- `Thread.interrupted()` is a static method that **clears** the flag while
-`isInterrupted()` does not. Use `interrupted()` only when you intend to handle the
-cancellation in the current method and not let it propagate.
-- A robust cancellable worker also runs cleanup in `finally`.
-*/
 
 final class CancellableReportJob implements Runnable {
     @Override public void run() {
@@ -191,46 +48,22 @@ final class CancellableReportJob implements Runnable {
     }
 }
 
-// =================================================================================================
-// Section 9: Shutdown hooks
-// =================================================================================================
-
-/*
-## Shutdown hooks
-
-- A shutdown hook is a `Thread` registered with
-`Runtime.getRuntime().addShutdownHook(...)` that the JVM runs when the process is
-about to exit (normal exit, `System.exit`, or an external `SIGTERM`).
-- Hooks run concurrently in unspecified order. They must finish quickly — a hook
-that blocks indefinitely will block JVM exit.
-- Typical uses: flush logs, close database connections, write a final metric, send
-a "going away" message to a coordinator.
-- Hooks are not invoked on `Runtime.halt()` or a JVM crash, so do not rely on them
-for correctness-critical cleanup.
-*/
-
-// =================================================================================================
-// Section 10: Why platform threads are expensive (teaser for Mod011)
-// =================================================================================================
-
-/*
-## Why platform threads are expensive
-
-- A platform thread is a 1:1 wrapper over an OS thread. Each one consumes a
-fixed-size stack (commonly ~1 MB on 64-bit JVMs).
-- A modern server can comfortably run a few thousand platform threads, but not
-hundreds of thousands — RAM and OS scheduler overhead become the bottleneck long
-before CPU does.
-- The thread-per-request model breaks at scale because most threads spend their
-time blocked on I/O. This motivates **virtual threads** (`Mod011VirtualThreads`)
-and **structured concurrency** (`Mod012StructuredConcurrency`).
-*/
-
 public final class Mod001Threads {
 
     private Mod001Threads() {}
 
-    // --- Section 2: creating threads ---
+    /*
+    Creating threads
+
+    - The idiomatic way to define a task is to implement Runnable (or Callable<V> if the task returns a value) and pass
+      it to a Thread. This separates what the task does from how it is run.
+    - Subclassing Thread and overriding run() is legal but discouraged: it couples the task with the thread, prevents
+      extending another class, and confuses readers about the lifetime of the task.
+    - Java 21 added a fluent builder via Thread.ofPlatform(). It supports .name(...), .daemon(...), .priority(...),
+      and .start(Runnable). There is also Thread.ofVirtual() for virtual threads — covered in Mod011VirtualThreads.
+    - A Thread instance can be started exactly once. Calling start() on an already started thread throws
+      IllegalThreadStateException.
+    */
     static void creatingThreads() throws InterruptedException {
         System.out.println("[Section 2] creating threads");
 
@@ -254,7 +87,14 @@ public final class Mod001Threads {
         t3.join();
     }
 
-    // --- Section 3: start vs run ---
+    /*
+    Thread.start vs Thread.run
+
+    - start() schedules the thread for execution by the JVM/OS. The new thread is created, and the JVM eventually calls
+      run() on it.
+    - Calling run() directly is just an ordinary method call on the current thread. No new thread is created. Beginners
+      who write t.run() instead of t.start() get sequential execution and miss any concurrency at all.
+    */
     static void startVsRun() throws InterruptedException {
         System.out.println("[Section 3] start vs run");
 
@@ -270,7 +110,21 @@ public final class Mod001Threads {
         new Thread(identify, "not-spawned").run();
     }
 
-    // --- Section 4: thread states ---
+    /*
+    Thread states
+
+    The Thread.State enum has six values:
+
+    - NEW — created but not yet started.
+    - RUNNABLE — eligible to run; either executing or waiting for CPU.
+    - BLOCKED — waiting to acquire an intrinsic lock held by another thread.
+    - WAITING — waiting indefinitely for another thread (Object.wait, Thread.join, LockSupport.park).
+    - TIMED_WAITING — waiting for a bounded amount of time (Thread.sleep, Object.wait(timeout), Thread.join(timeout)).
+    - TERMINATED — the run method has returned (normally or by exception).
+
+    Thread.getState() is a snapshot, intended for monitoring and diagnostics. It must not be used to make
+    synchronization decisions because the state can change between the read and the next instruction.
+    */
     static void threadStates() throws InterruptedException {
         System.out.println("[Section 4] thread states");
 
@@ -302,7 +156,18 @@ public final class Mod001Threads {
                 + ", contender=" + contender.getState());                            // TERMINATED
     }
 
-    // --- Section 5: daemon vs user threads ---
+    /*
+    Daemon vs user threads
+
+    - A user (foreground) thread keeps the JVM alive — it will not exit while any user thread is still running.
+    - A daemon (background) thread does not. When only daemon threads remain, the JVM shuts down without waiting for
+      them.
+    - setDaemon(true) must be called before start(). Calling it on a running thread throws IllegalThreadStateException.
+    - A daemon thread inherits its daemon status when forking another thread. Daemon threads are cut off abruptly at
+      JVM exit — do not use them for work that must complete (writing files, flushing buffers).
+    - Typical uses: heartbeats, telemetry pumps, GC-like background workers — anything where being terminated mid-task
+      is acceptable.
+    */
     static void daemonVsUser() throws InterruptedException {
         System.out.println("[Section 5] daemon vs user threads");
 
@@ -326,7 +191,17 @@ public final class Mod001Threads {
                 + " is still running");
     }
 
-    // --- Section 6: sleep and InterruptedException ---
+    /*
+    Thread.sleep and InterruptedException
+
+    - Thread.sleep(millis) parks the current thread for at least the given duration (it can sleep longer; precision is
+      OS-dependent). The thread does not release any locks it holds — never sleep while holding a contended monitor.
+    - Thread.sleep declares the checked InterruptedException. When another thread calls t.interrupt() on a sleeping
+      thread, the JVM wakes it up and throws InterruptedException, clearing the interrupt flag.
+    - If you cannot propagate InterruptedException (e.g., inside a Runnable.run), you should restore the flag with
+      Thread.currentThread().interrupt() so callers higher up in the stack still see the cancellation request.
+    - Swallowing InterruptedException silently is the single most common cancellation bug in Java code.
+    */
     static void sleepAndInterrupt() throws InterruptedException {
         System.out.println("[Section 6] sleep + InterruptedException");
 
@@ -347,7 +222,17 @@ public final class Mod001Threads {
         sleeper.join();
     }
 
-    // --- Section 7: joining threads ---
+    /*
+    Joining threads
+
+    - t.join() blocks the calling thread until t has terminated. It establishes a happens-before edge: every action in
+      t is visible to the caller after join() returns.
+    - t.join(millis) waits at most millis milliseconds and then returns whether or not t finished. Always check
+      t.isAlive() after a timed join if you need to know.
+    - A thread can also be joined with a Duration since Java 19: t.join(Duration.ofSeconds(5)).
+    - join does not request termination — it only waits. To stop a worker that is still running you must signal it
+      (interrupt or set a flag). See section 8.
+    */
     static void joiningThreads() throws InterruptedException {
         System.out.println("[Section 7] joining threads");
 
@@ -368,7 +253,19 @@ public final class Mod001Threads {
         System.out.println("  after final join: alive=" + slow.isAlive());
     }
 
-    // --- Section 8: cooperative cancellation ---
+    /*
+    Cooperative cancellation (the interrupt protocol)
+
+    - Java has no safe forced stop. Thread.stop() is removed in modern JDKs because it could leave shared state in an
+      inconsistent half-modified shape.
+    - Cancellation is cooperative: the requester sets the interrupt flag with t.interrupt(), and the worker is
+      responsible for noticing it and exiting.
+    - The worker checks Thread.currentThread().isInterrupted() in its main loop, and catches InterruptedException from
+      blocking calls (sleep, wait, join, queue operations) — both are signals to wind down.
+    - Thread.interrupted() is a static method that clears the flag while isInterrupted() does not. Use interrupted()
+      only when you intend to handle the cancellation in the current method and not let it propagate.
+    - A robust cancellable worker also runs cleanup in finally.
+    */
     static void cooperativeCancellation() throws InterruptedException {
         System.out.println("[Section 8] cooperative cancellation");
 
@@ -391,7 +288,17 @@ public final class Mod001Threads {
         spinner.join();
     }
 
-    // --- Section 9: shutdown hooks ---
+    /*
+    Shutdown hooks
+
+    - A shutdown hook is a Thread registered with Runtime.getRuntime().addShutdownHook(...) that the JVM runs when the
+      process is about to exit (normal exit, System.exit, or an external SIGTERM).
+    - Hooks run concurrently in unspecified order. They must finish quickly — a hook that blocks indefinitely will
+      block JVM exit.
+    - Typical uses: flush logs, close database connections, write a final metric, send a "going away" message to a
+      coordinator.
+    - Hooks are not invoked on Runtime.halt() or a JVM crash, so do not rely on them for correctness-critical cleanup.
+    */
     static void shutdownHook() {
         System.out.println("[Section 9] shutdown hook");
 
@@ -402,7 +309,16 @@ public final class Mod001Threads {
         System.out.println("  hook registered; it will fire when main() returns");
     }
 
-    // --- Section 10: teaser ---
+    /*
+    Why platform threads are expensive
+
+    - A platform thread is a 1:1 wrapper over an OS thread. Each one consumes a fixed-size stack (commonly ~1 MB on
+      64-bit JVMs).
+    - A modern server can comfortably run a few thousand platform threads, but not hundreds of thousands — RAM and OS
+      scheduler overhead become the bottleneck long before CPU does.
+    - The thread-per-request model breaks at scale because most threads spend their time blocked on I/O. This motivates
+      virtual threads (Mod011VirtualThreads) and structured concurrency (Mod012StructuredConcurrency).
+    */
     static void platformThreadCost() {
         System.out.println("[Section 10] why platform threads are expensive");
         // Defaults of the running JVM — illustrative only, not a benchmark.

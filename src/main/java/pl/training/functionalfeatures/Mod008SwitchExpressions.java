@@ -3,121 +3,25 @@ package pl.training.functionalfeatures;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 
-// =================================================================================================
-// Section 1: Arrow form
-// =================================================================================================
-
-/*
-## Arrow form (Java 14)
-
-```java
-switch (day) {
-    case MON, TUE, WED, THU, FRI -> "weekday";
-    case SAT, SUN                -> "weekend";
-}
-```
-
-- Right-hand side is a single expression (or a `{ ... yield ... }` block —
-  see §3).
-- **No fall-through** — every arrow case implicitly breaks. This eliminates
-  the most common bug in classic switches.
-- Multiple labels on one case are written with commas, replacing the awful
-  empty-case fall-through trick of the old syntax.
-*/
-
-// =================================================================================================
-// Section 2: switch as an expression
-// =================================================================================================
-
-/*
-## switch as an expression
-
-The whole `switch` is an expression that produces a value:
-
-```java
-String message = switch (status / 100) {
-    case 1 -> "informational";
-    case 2 -> "ok";
-    case 4 -> "client error";
-    case 5 -> "server error";
-    default -> "?";
-};
-```
-
-- The expression form is **definitely assigned** — every path must produce
-  a value. Falling off the end is a compile error.
-- For a switch on a non-enum / non-sealed selector you need a `default` to
-  make the switch total.
-- This composes well with `var`: `var label = switch (x) { ... };`.
-*/
-
-// =================================================================================================
-// Section 3: yield for block-bodied cases
-// =================================================================================================
-
-/*
-## yield for block-bodied cases
-
-When a case needs a statement (logging, validation, helper computation), use
-a block and end it with `yield`:
-
-```java
-case 2 -> {
-    log.info("hit {}xx", code / 100);
-    yield "ok";
-}
-```
-
-- `yield` is the value-returning analogue of `return` for switch
-  expressions.
-- `break` does NOT yield — it just terminates the case (statement form
-  only); using it in expression form is a compile error.
-*/
-
-// =================================================================================================
-// Section 4: Exhaustiveness on enums
-// =================================================================================================
-
-/*
-## Exhaustiveness on enums
-
-When the selector is an enum and every constant is covered by an arrow case,
-no `default` is required and the compiler enforces total coverage.
-
-The big payoff is forward compatibility: adding a new constant to the enum
-turns every existing exhaustive switch into a compile error, forcing the
-author to acknowledge the new case. Compare to a switch with `default` — the
-default silently absorbs the new constant and you may ship a bug.
-
-Sealed types (Mod010) get the same compiler-enforced exhaustiveness.
-*/
-
-// =================================================================================================
-// Section 5: Statement form vs expression form
-// =================================================================================================
-
-/*
-## Statement form vs expression form
-
-Both forms still exist:
-
-- **Statement form** — for side effects only (`print`, throw, mutate). No
-  value is produced.
-- **Expression form** — produces a value; preferred whenever you would
-  otherwise assign to a temporary in each branch.
-
-The arrow form (§1) can be used in either context. The classic colon-form
-(`case X: ... break;`) is still legal and still allows fall-through, but in
-new code there is no reason to choose it over arrows.
-*/
-
 public final class Mod008SwitchExpressions {
 
     private Mod008SwitchExpressions() {}
 
     enum Status { ACTIVE, ARCHIVED, BANNED, GUEST }
 
-    // --- Section 1: arrow form, multiple labels ---
+    /*
+    Arrow form (Java 14)
+
+    switch (day) {
+        case MON, TUE, WED, THU, FRI -> "weekday";
+        case SAT, SUN                -> "weekend";
+    }
+
+    - Right-hand side is a single expression (or a { ... yield ... } block — see §3).
+    - No fall-through — every arrow case implicitly breaks. This eliminates the most common bug in classic switches.
+    - Multiple labels on one case are written with commas, replacing the awful empty-case fall-through trick of the
+      old syntax.
+    */
     static void arrowForm() {
         System.out.println("[Section 1] arrow form, multiple labels");
 
@@ -130,7 +34,24 @@ public final class Mod008SwitchExpressions {
         }
     }
 
-    // --- Section 2: switch as expression ---
+    /*
+    switch as an expression
+
+    The whole switch is an expression that produces a value:
+
+    String message = switch (status / 100) {
+        case 1 -> "informational";
+        case 2 -> "ok";
+        case 4 -> "client error";
+        case 5 -> "server error";
+        default -> "?";
+    };
+
+    - The expression form is definitely assigned — every path must produce a value. Falling off the end is a compile
+      error.
+    - For a switch on a non-enum / non-sealed selector you need a default to make the switch total.
+    - This composes well with var: var label = switch (x) { ... };.
+    */
     static void switchExpression() {
         System.out.println("[Section 2] switch as expression");
 
@@ -148,7 +69,20 @@ public final class Mod008SwitchExpressions {
         }
     }
 
-    // --- Section 3: yield in block-bodied cases ---
+    /*
+    yield for block-bodied cases
+
+    When a case needs a statement (logging, validation, helper computation), use a block and end it with yield:
+
+    case 2 -> {
+        log.info("hit {}xx", code / 100);
+        yield "ok";
+    }
+
+    - yield is the value-returning analogue of return for switch expressions.
+    - break does NOT yield — it just terminates the case (statement form only); using it in expression form is a
+      compile error.
+    */
     static void yieldInBlocks() {
         System.out.println("[Section 3] yield in block-bodied cases");
 
@@ -169,7 +103,18 @@ public final class Mod008SwitchExpressions {
         }
     }
 
-    // --- Section 4: enum exhaustiveness ---
+    /*
+    Exhaustiveness on enums
+
+    When the selector is an enum and every constant is covered by an arrow case, no default is required and the
+    compiler enforces total coverage.
+
+    The big payoff is forward compatibility: adding a new constant to the enum turns every existing exhaustive
+    switch into a compile error, forcing the author to acknowledge the new case. Compare to a switch with default —
+    the default silently absorbs the new constant and you may ship a bug.
+
+    Sealed types (Mod010) get the same compiler-enforced exhaustiveness.
+    */
     static void enumExhaustiveness() {
         System.out.println("[Section 4] enum exhaustiveness");
 
@@ -186,7 +131,18 @@ public final class Mod008SwitchExpressions {
         }
     }
 
-    // --- Section 5: statement form (side effects) vs expression form (values) ---
+    /*
+    Statement form vs expression form
+
+    Both forms still exist:
+
+    - Statement form — for side effects only (print, throw, mutate). No value is produced.
+    - Expression form — produces a value; preferred whenever you would otherwise assign to a temporary in each
+      branch.
+
+    The arrow form (§1) can be used in either context. The classic colon-form (case X: ... break;) is still legal
+    and still allows fall-through, but in new code there is no reason to choose it over arrows.
+    */
     static void statementVsExpression() {
         System.out.println("[Section 5] statement vs expression form");
 

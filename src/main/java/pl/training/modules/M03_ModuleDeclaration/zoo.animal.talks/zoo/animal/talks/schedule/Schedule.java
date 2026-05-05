@@ -1,4 +1,4 @@
-package pl.training.modules.M03_ModuleDeclaration.zoo.animal.talks.zoo.animal.talks.schedule;
+package zoo.animal.talks.schedule;
 
 public class Schedule {
     public static String firstSlot() {

@@ -1,14 +1,9 @@
 package pl.training.concurrency.extras.rx_search.wikipedia;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import lombok.Data;
 
 import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-@Data
-public class Query {
-
-    private List<Article> search;
-
+public record Query(List<Article> search) {
 }

@@ -1,5 +1,5 @@
-import pl.training.modules.M04_Services.zoo.tours.api.zoo.tours.api.Tour;
-import pl.training.modules.M04_Services.zoo.tours.guide.zoo.tours.guide.QuietTour;
+import zoo.tours.api.Tour;
+import zoo.tours.guide.QuietTour;
 
 module zoo.tours.guide {
     requires zoo.tours.api;

@@ -5,117 +5,6 @@ import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-// =================================================================================================
-// Section 1: The state-passing pattern
-// =================================================================================================
-
-/*
-## The state-passing pattern
-
-A *stateful* computation that should be pure expresses its state as
-input and output instead of mutating a global:
-
-```
-(value, newState) = step(args, oldState)
-```
-
-Every call takes the previous state and returns the new one. There is no
-shared global, no `static` field, no thread-local — just function
-composition.
-
-Disadvantage: every line of code threads the state through manually,
-which is noisy. The State monad (§2) hides that plumbing.
-*/
-
-// =================================================================================================
-// Section 2: State<S, A>
-// =================================================================================================
-
-/*
-## State<S, A>
-
-```
-record State<S, A>(Function<S, Pair<A, S>> run) {
-    <B> State<S, B> map(Function<A, B> f);
-    <B> State<S, B> flatMap(Function<A, State<S, B>> f);
-}
-```
-
-A `State<S, A>` *describes* a stateful computation; nothing runs until
-you call `.run(initial)`, which returns `Pair<A, S>`.
-
-- `map(f)`     — transform the produced value while keeping the state
-                  flow.
-- `flatMap(f)` — chain a computation whose next step depends on the value
-                  the previous one produced. The state plumbs through
-                  automatically.
-*/
-
-// =================================================================================================
-// Section 3: Random as State<Long, Int>
-// =================================================================================================
-
-/*
-## Random as State<Long, Int>
-
-A pure 64-bit linear congruential generator: every step returns the next
-seed plus the next value. Same seed → same sequence, always.
-
-- `nextInt`     — `State<Long, Integer>` producing a non-negative int.
-- `between(lo,hi)` — pick from a range; `flatMap`'d over `nextInt`.
-- `nextDouble`  — similar shape, derived from `nextInt`.
-*/
-
-// =================================================================================================
-// Section 4: Composing stateful computations
-// =================================================================================================
-
-/*
-## Composing stateful computations
-
-Three dice rolls expressed as a chain of `flatMap`s:
-
-```
-State<Long, List<Integer>> threeRolls =
-        die.flatMap(a ->
-        die.flatMap(b ->
-        die.map   (c -> List.of(a, b, c))));
-```
-
-The seed flows through automatically. The user writes a sequence of
-"value bindings", each pure; the State monad handles the threading.
-*/
-
-// =================================================================================================
-// Section 5: sequence / traverse
-// =================================================================================================
-
-/*
-## sequence / traverse
-
-Two universal helpers when you have many `State<S, A>` and want one
-`State<S, List<A>>`:
-
-- `sequence(states)`     — run them in order, collect the produced values.
-- `traverse(items, fn)`  — for each item, build a `State<S, A>` via `fn`,
-                           then sequence.
-
-These shape up naturally for "do this stateful thing N times".
-*/
-
-// =================================================================================================
-// Section 6: End-to-end — same seed → same sequence
-// =================================================================================================
-
-/*
-## End-to-end — same seed → same sequence
-
-- Run `traverse` over 100 dice rolls with seed `42` twice.
-- Confirm the two resulting lists are bitwise identical (purity).
-- Confirm the final state (next seed) is the same in both runs.
-- Confirm the rolls are within `[1, 6]`.
-*/
-
 public final class Mod008StateMonad {
 
     private Mod008StateMonad() {}
@@ -200,6 +89,19 @@ public final class Mod008StateMonad {
     // Sections
     // =================================================================================================
 
+    /*
+    The state-passing pattern
+
+    A stateful computation that should be pure expresses its state as input and output instead of mutating a global:
+
+    (value, newState) = step(args, oldState)
+
+    Every call takes the previous state and returns the new one. There is no shared global, no static field, no
+    thread-local — just function composition.
+
+    Disadvantage: every line of code threads the state through manually, which is noisy. The State monad (§2) hides
+    that plumbing.
+    */
     static void statePassingPattern() {
         System.out.println("[Section 1] state-passing pattern (manual)");
         long seed = 42L;
@@ -209,12 +111,37 @@ public final class Mod008StateMonad {
         System.out.println("              → second int = " + p2.first() + ", new seed = " + p2.second());
     }
 
+    /*
+    State<S, A>
+
+    record State<S, A>(Function<S, Pair<A, S>> run) {
+        <B> State<S, B> map(Function<A, B> f);
+        <B> State<S, B> flatMap(Function<A, State<S, B>> f);
+    }
+
+    A State<S, A> describes a stateful computation; nothing runs until you call .run(initial), which returns
+    Pair<A, S>.
+
+    - map(f)     — transform the produced value while keeping the state flow.
+    - flatMap(f) — chain a computation whose next step depends on the value the previous one produced. The state
+                   plumbs through automatically.
+    */
     static void stateMonadIntro() {
         System.out.println("[Section 2] State<S, A>");
         State<Long, String> labeled = nextInt().map(n -> "rolled " + n);
         System.out.println("  labeled.run(42) = " + labeled.run().apply(42L));
     }
 
+    /*
+    Random as State<Long, Int>
+
+    A pure 64-bit linear congruential generator: every step returns the next seed plus the next value. Same seed →
+    same sequence, always.
+
+    - nextInt     — State<Long, Integer> producing a non-negative int.
+    - between(lo,hi) — pick from a range; flatMap'd over nextInt.
+    - nextDouble  — similar shape, derived from nextInt.
+    */
     static void randomViaState() {
         System.out.println("[Section 3] Random as State<Long, Int>");
         var die = between(1, 6);
@@ -225,6 +152,19 @@ public final class Mod008StateMonad {
                 + " == " + die.run().apply(42L).first());
     }
 
+    /*
+    Composing stateful computations
+
+    Three dice rolls expressed as a chain of flatMaps:
+
+    State<Long, List<Integer>> threeRolls =
+            die.flatMap(a ->
+            die.flatMap(b ->
+            die.map   (c -> List.of(a, b, c))));
+
+    The seed flows through automatically. The user writes a sequence of "value bindings", each pure; the State
+    monad handles the threading.
+    */
     static void composingStateful() {
         System.out.println("[Section 4] composing stateful computations");
         var die = between(1, 6);
@@ -235,6 +175,16 @@ public final class Mod008StateMonad {
         System.out.println("  threeRolls(42) = " + threeRolls.run().apply(42L).first());
     }
 
+    /*
+    sequence / traverse
+
+    Two universal helpers when you have many State<S, A> and want one State<S, List<A>>:
+
+    - sequence(states)     — run them in order, collect the produced values.
+    - traverse(items, fn)  — for each item, build a State<S, A> via fn, then sequence.
+
+    These shape up naturally for "do this stateful thing N times".
+    */
     static void sequenceAndTraverse() {
         System.out.println("[Section 5] sequence / traverse");
         var die = between(1, 6);
@@ -249,6 +199,14 @@ public final class Mod008StateMonad {
         System.out.println("  traverse([1,2,3], pos*10)    = " + trav.run().apply(42L).first());
     }
 
+    /*
+    End-to-end — same seed → same sequence
+
+    - Run traverse over 100 dice rolls with seed 42 twice.
+    - Confirm the two resulting lists are bitwise identical (purity).
+    - Confirm the final state (next seed) is the same in both runs.
+    - Confirm the rolls are within [1, 6].
+    */
     static void endToEnd() {
         System.out.println("[Section 6] end-to-end — purity check");
 

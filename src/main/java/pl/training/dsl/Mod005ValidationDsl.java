@@ -7,105 +7,26 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
-// =================================================================================================
-// Section 1: Why a validation DSL
-// =================================================================================================
-
 /*
-## Why a validation DSL
+Why a validation DSL
 
-- Bean Validation annotations are concise but rigid: cross-field rules
-require a separate `@AssertTrue` method, conditional rules require a
-`@GroupSequenceProvider`, and unit-testing a validator is awkward because
-the validator is hidden behind reflection.
-- A programmatic validation DSL is plain Java: rules live in a method,
-unit tests are trivial, conditional logic is `if`, custom predicates are
-free.
-- Goal: build a `Validator<T>` that produces a list of `Violation` records
-(field path + message). Errors are *collected*, not thrown — the caller
-decides what to do with them.
+- Bean Validation annotations are concise but rigid: cross-field rules require a separate @AssertTrue method,
+  conditional rules require a @GroupSequenceProvider, and unit-testing a validator is awkward because the validator
+  is hidden behind reflection.
+- A programmatic validation DSL is plain Java: rules live in a method, unit tests are trivial, conditional logic is
+  if, custom predicates are free.
+- Goal: build a Validator<T> that produces a list of Violation records (field path + message). Errors are collected,
+  not thrown — the caller decides what to do with them.
 - This module's anchor is registering a user
-(`RegisterUserCommand(email, password, age, country, optional referralCode)`).
-*/
+  (RegisterUserCommand(email, password, age, country, optional referralCode)).
 
-// =================================================================================================
-// Section 2: Validator<T> and Violation
-// =================================================================================================
+Validator<T> and Violation
 
-/*
-## Validator<T> and Violation
-
-- `Violation(field, message)` — a single problem report. The field is a
-dotted path so nested objects can report
-`address.zipCode: must not be blank`.
-- `Validator<T>` is a list of `Rule<T>`; each rule turns the input into a
-list of violations. `validate(t)` runs every rule and concatenates.
+- Violation(field, message) — a single problem report. The field is a dotted path so nested objects can report
+  address.zipCode: must not be blank.
+- Validator<T> is a list of Rule<T>; each rule turns the input into a list of violations. validate(t) runs every
+  rule and concatenates.
 - Rules are expressed declaratively in a small DSL (§3-4).
-*/
-
-// =================================================================================================
-// Section 3: Field-targeted rules
-// =================================================================================================
-
-/*
-## Field-targeted rules
-
-- `field("email", U::email, r -> r.notBlank().matches(EMAIL_RE))` records
-the field name once and adds it to every violation that the inner rules
-emit.
-- The inner builder exposes the common atomic checks: `notBlank`,
-`matches`, `min`, `max`, `between`, `inSet`, `predicate(custom)`. Each
-returns the same builder so they chain.
-- All checks run regardless of whether earlier ones failed — the user
-sees every problem in one pass instead of "fix this, run, fix the next,
-run again" cycles.
-*/
-
-// =================================================================================================
-// Section 4: Conditional rules
-// =================================================================================================
-
-/*
-## Conditional rules
-
-- `when(predicate, sub -> ...)` runs the inner rules only when the
-predicate over the entire object is true. Used for cross-field logic:
-"if age < 18, require a guardianEmail".
-- `unless(predicate, sub -> ...)` is the inverse and reads cleaner for
-"unless overrideFlag is set, …" cases.
-- The conditional wrapper preserves the field-path stack so violations
-inside a `when` block still carry the right prefix.
-*/
-
-// =================================================================================================
-// Section 5: Sub-validator composition
-// =================================================================================================
-
-/*
-## Sub-validator composition
-
-- A validator can call into another validator on a sub-object via
-`nested("address", U::address, ADDRESS_VALIDATOR)`. Violations from the
-sub-validator are re-prefixed with `address.`.
-- The same pattern works for collections via `each("tags", U::tags, ITEM_RULE)`
-— prefix becomes `tags[0]`, `tags[1]`, ... .
-- Composition lets you reuse a small validator (`AddressValidator`) inside
-multiple top-level validators.
-*/
-
-// =================================================================================================
-// Section 6: End-to-end
-// =================================================================================================
-
-/*
-## End-to-end
-
-- Validate three sample inputs:
-  1. fully valid adult,
-  2. invalid email + short password,
-  3. minor without `guardianEmail`,
-- Print the resulting violations grouped by field; assert against an
-expected count per case.
 */
 
 public final class Mod005ValidationDsl {
@@ -269,6 +190,16 @@ public final class Mod005ValidationDsl {
     // Sections
     // =================================================================================================
 
+    /*
+    Field-targeted rules
+
+    - field("email", U::email, r -> r.notBlank().matches(EMAIL_RE)) records the field name once and adds it to every
+      violation that the inner rules emit.
+    - The inner builder exposes the common atomic checks: notBlank, matches, min, max, between, inSet,
+      predicate(custom). Each returns the same builder so they chain.
+    - All checks run regardless of whether earlier ones failed — the user sees every problem in one pass instead of
+      "fix this, run, fix the next, run again" cycles.
+    */
     static void fieldRulesDemo() {
         System.out.println("[Section 3] field-targeted rules");
         var rule = Mod005ValidationDsl.<RegisterUserCommand>rules()
@@ -279,6 +210,15 @@ public final class Mod005ValidationDsl {
         rule.validate(bad).forEach(v -> System.out.println("  " + v));
     }
 
+    /*
+    Conditional rules
+
+    - when(predicate, sub -> ...) runs the inner rules only when the predicate over the entire object is true. Used
+      for cross-field logic: "if age < 18, require a guardianEmail".
+    - unless(predicate, sub -> ...) is the inverse and reads cleaner for "unless overrideFlag is set, …" cases.
+    - The conditional wrapper preserves the field-path stack so violations inside a when block still carry the right
+      prefix.
+    */
     static void conditionalRulesDemo() {
         System.out.println("[Section 4] conditional rules");
         var minorWithGuardian = new RegisterUserCommand("alice@example.com", "p4ssw0rd", 14, "PL",
@@ -289,6 +229,15 @@ public final class Mod005ValidationDsl {
         System.out.println("  minor missing  : " + USER_VALIDATOR.validate(minorMissing));
     }
 
+    /*
+    Sub-validator composition
+
+    - A validator can call into another validator on a sub-object via nested("address", U::address,
+      ADDRESS_VALIDATOR). Violations from the sub-validator are re-prefixed with address..
+    - The same pattern works for collections via each("tags", U::tags, ITEM_RULE) — prefix becomes tags[0], tags[1],
+      ... .
+    - Composition lets you reuse a small validator (AddressValidator) inside multiple top-level validators.
+    */
     static void nestedComposition() {
         System.out.println("[Section 5] nested validator composition");
         var u = new RegisterUserCommand("alice@example.com", "p4ssw0rd", 30, "PL",
@@ -296,6 +245,15 @@ public final class Mod005ValidationDsl {
         USER_VALIDATOR.validate(u).forEach(v -> System.out.println("  " + v));
     }
 
+    /*
+    End-to-end
+
+    - Validate three sample inputs:
+      1. fully valid adult,
+      2. invalid email + short password,
+      3. minor without guardianEmail,
+    - Print the resulting violations grouped by field; assert against an expected count per case.
+    */
     static void endToEnd() {
         System.out.println("[Section 6] end-to-end with assertions");
 

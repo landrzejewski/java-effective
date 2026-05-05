@@ -4,103 +4,17 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
-// =================================================================================================
-// Section 1: Why a typed HTML DSL
-// =================================================================================================
-
 /*
-## Why a typed HTML DSL
+Why a typed HTML DSL
 
-- Composing HTML by string concatenation is the canonical XSS factory.
-Every `+` between user input and a string is a potential injection point;
-every "I'll just escape this one" comment is a future bug.
-- A typed DSL inverts the default: the only way to insert text is through
-an escaping API. Raw HTML must be opted into via an explicit, ugly-named
-method (`unsafeRaw`), so reviewers can grep for it.
-- Bonus pay-off: nesting structure mirrors the DOM. Forgetting to close a
-tag is impossible because the closing tag is emitted by the builder, not
-the user.
-- Real-world use: rendering transactional emails (welcome, password reset,
-invoice). The DSL produces a `String` ready to feed into an SMTP client.
-*/
-
-// =================================================================================================
-// Section 2: Tag composition with lambda receivers
-// =================================================================================================
-
-/*
-## Tag composition with lambda receivers
-
-- Each builder method takes a `Consumer<HtmlBuilder>` for its body. The
-caller writes `b -> { b.h1("Title"); b.p("Body"); }` and never sees the
-opening or closing tag.
-- Indentation is controlled by the renderer, not by the caller.
-- Self-closing tags (`<br>`, `<img>`) have their own helpers that take no
-body lambda — eliminating the "did I forget to close it?" question.
-*/
-
-// =================================================================================================
-// Section 3: Escape-by-construction
-// =================================================================================================
-
-/*
-## Escape-by-construction
-
-- `text(...)` always escapes `<`, `>`, `&`, `"`, `'`. Plain string
-parameters of attribute helpers (`href`, `cls`, `id`, ...) are also
-escaped.
-- The only way to inject a literal `<script>` is to call `unsafeRaw(...)`.
-That method exists for templating concatenation but has a name that makes
-audits trivial: `git grep unsafeRaw` shows every place trust is granted.
-- This is the same shape as Spring's `HtmlUtils.htmlEscape` or Apache's
-`StringEscapeUtils.escapeHtml4`, but baked into the construction API
-instead of being an optional helper.
-*/
-
-// =================================================================================================
-// Section 4: Attributes via varargs
-// =================================================================================================
-
-/*
-## Attributes via varargs
-
-- Tags accept attributes through varargs of typed `Attr` values:
-  `a(href("/login"), cls("btn primary"))`.
-- Helper functions (`href`, `cls`, `id`, `style`, `attr("data-foo", v)`)
-  return `Attr` instances, so an integer or a `Date` cannot accidentally be
-  passed where an attribute name was expected.
-- `cls` accepts a space-separated list internally; a `cls("a b")` produces
-  `class="a b"` — the helper does the right thing without forcing the user
-  to remember the HTML attribute name.
-*/
-
-// =================================================================================================
-// Section 5: Reusable fragments
-// =================================================================================================
-
-/*
-## Reusable fragments
-
-- A "fragment" is just a `Consumer<HtmlBuilder>` — the same shape as the
-body lambdas. Define `welcomeBanner(String name)` returning such a
-consumer; reuse it inside larger emails by calling
-`b -> welcomeBanner("Alice").accept(b)`.
-- This is the same composition rule as the lambda receivers in §2 — the
-DSL is *uniform* in how nesting is expressed, so reusable pieces compose
-naturally.
-*/
-
-// =================================================================================================
-// Section 6: End-to-end welcome email
-// =================================================================================================
-
-/*
-## End-to-end welcome email
-
-- Assemble a complete HTML email: heading, salutation, paragraph,
-unordered list of next steps, call-to-action button, footer.
-- Render to a single string, perform sanity checks (balanced tags, no
-unescaped `<` outside tag delimiters), and print the first lines.
+- Composing HTML by string concatenation is the canonical XSS factory. Every + between user input and a string is a
+  potential injection point; every "I'll just escape this one" comment is a future bug.
+- A typed DSL inverts the default: the only way to insert text is through an escaping API. Raw HTML must be opted
+  into via an explicit, ugly-named method (unsafeRaw), so reviewers can grep for it.
+- Bonus pay-off: nesting structure mirrors the DOM. Forgetting to close a tag is impossible because the closing tag
+  is emitted by the builder, not the user.
+- Real-world use: rendering transactional emails (welcome, password reset, invoice). The DSL produces a String ready
+  to feed into an SMTP client.
 */
 
 public final class Mod002HtmlEmailDsl {
@@ -203,7 +117,15 @@ public final class Mod002HtmlEmailDsl {
         return b.render();
     }
 
-    // --- Section 2: lambda-receiver tag composition ---
+    /*
+    Tag composition with lambda receivers
+
+    - Each builder method takes a Consumer<HtmlBuilder> for its body. The caller writes
+      b -> { b.h1("Title"); b.p("Body"); } and never sees the opening or closing tag.
+    - Indentation is controlled by the renderer, not by the caller.
+    - Self-closing tags (<br>, <img>) have their own helpers that take no body lambda — eliminating the "did I forget
+      to close it?" question.
+    */
     static void tagComposition() {
         System.out.println("[Section 2] tag composition");
 
@@ -213,7 +135,16 @@ public final class Mod002HtmlEmailDsl {
         System.out.println(html.lines().limit(8).reduce("", (a, l) -> a + "  " + l + "\n"));
     }
 
-    // --- Section 3: escape-by-construction ---
+    /*
+    Escape-by-construction
+
+    - text(...) always escapes <, >, &, ", '. Plain string parameters of attribute helpers (href, cls, id, ...) are
+      also escaped.
+    - The only way to inject a literal <script> is to call unsafeRaw(...). That method exists for templating
+      concatenation but has a name that makes audits trivial: git grep unsafeRaw shows every place trust is granted.
+    - This is the same shape as Spring's HtmlUtils.htmlEscape or Apache's StringEscapeUtils.escapeHtml4, but baked
+      into the construction API instead of being an optional helper.
+    */
     static void escapeByConstruction() {
         System.out.println("[Section 3] escape by construction");
 
@@ -232,7 +163,15 @@ public final class Mod002HtmlEmailDsl {
                 + trusted.contains("<custom-tag>"));
     }
 
-    // --- Section 4: attributes ---
+    /*
+    Attributes via varargs
+
+    - Tags accept attributes through varargs of typed Attr values: a(href("/login"), cls("btn primary")).
+    - Helper functions (href, cls, id, style, attr("data-foo", v)) return Attr instances, so an integer or a Date
+      cannot accidentally be passed where an attribute name was expected.
+    - cls accepts a space-separated list internally; a cls("a b") produces class="a b" — the helper does the right
+      thing without forcing the user to remember the HTML attribute name.
+    */
     static void attributesDemo() {
         System.out.println("[Section 4] attributes via varargs");
 
@@ -247,7 +186,15 @@ public final class Mod002HtmlEmailDsl {
                 .forEach(l -> System.out.println("  " + l.trim()));
     }
 
-    // --- Section 5: reusable fragment ---
+    /*
+    Reusable fragments
+
+    - A "fragment" is just a Consumer<HtmlBuilder> — the same shape as the body lambdas. Define
+      welcomeBanner(String name) returning such a consumer; reuse it inside larger emails by calling
+      b -> welcomeBanner("Alice").accept(b).
+    - This is the same composition rule as the lambda receivers in §2 — the DSL is uniform in how nesting is
+      expressed, so reusable pieces compose naturally.
+    */
     static Consumer<HtmlBuilder> welcomeBanner(String name) {
         return b -> b.tag("section",
                 inner -> inner.h1("Welcome, " + name + "!").p("Thanks for joining."),
@@ -269,7 +216,14 @@ public final class Mod002HtmlEmailDsl {
         System.out.println(html.lines().limit(10).reduce("", (a, l) -> a + "  " + l + "\n"));
     }
 
-    // --- Section 6: end-to-end welcome email + sanity check ---
+    /*
+    End-to-end welcome email
+
+    - Assemble a complete HTML email: heading, salutation, paragraph, unordered list of next steps, call-to-action
+      button, footer.
+    - Render to a single string, perform sanity checks (balanced tags, no unescaped < outside tag delimiters), and
+      print the first lines.
+    */
     static void endToEnd() {
         System.out.println("[Section 6] end-to-end welcome email");
 

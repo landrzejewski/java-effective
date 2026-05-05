@@ -26,18 +26,11 @@ class Worker implements Runnable {
     }
 
     private void onText(String text) {
-        eventsBus.publish(ServerEvent.builder()
-                .type(MESSAGE_RECEIVED)
-                .payload(text)
-                .source(this)
-                .build());
+        eventsBus.publish(new ServerEvent(MESSAGE_RECEIVED, text, this));
     }
 
     private void onInputClose() {
-        eventsBus.publish(ServerEvent.builder()
-                .type(CONNECTION_CLOSED)
-                .source(this)
-                .build());
+        eventsBus.publish(new ServerEvent(CONNECTION_CLOSED, null, this));
     }
 
     void send(String text) {

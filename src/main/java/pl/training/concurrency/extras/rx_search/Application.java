@@ -53,7 +53,7 @@ public class Application {
     private Observable<List<String>> sendWikipediaQuery(String query) {
         return wikipediaService.getArticles(query)
                 .flatMap(Observable::fromIterable)
-                .map(Article::getTitle)
+                .map(Article::title)
                 .reduce(new ArrayList<>(), this::combine)
                 .toObservable()
                 .subscribeOn(Schedulers.io());
@@ -62,7 +62,7 @@ public class Application {
     private Observable<List<String>> sendGithubQuery(String query) {
         return githubService.getRepositories(query)
                 .flatMap(Observable::fromIterable)
-                .map(Repository::getName)
+                .map(Repository::name)
                 .reduce(new ArrayList<>(), this::combine)
                 .toObservable()
                 .subscribeOn(Schedulers.io());

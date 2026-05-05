@@ -3,121 +3,6 @@ package pl.training.concurrency;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
-// =================================================================================================
-// Section 1: The intrinsic lock (monitor)
-// =================================================================================================
-
-/*
-## The intrinsic lock (monitor)
-
-- Every Java object has an associated **intrinsic lock** (a *monitor*). Acquiring
-that monitor is the only thing the `synchronized` keyword does.
-- A monitor is binary: at most one thread holds it at any moment. Other threads
-that try to acquire it wait in the BLOCKED state.
-- Holding a monitor establishes a happens-before edge: changes made under one
-acquire/release of monitor `m` are visible to any thread that subsequently acquires
-`m`. This is the visibility half of synchronization.
-- Releasing the monitor happens automatically when the synchronized block exits —
-even via an exception. There is no way to forget to unlock an intrinsic monitor.
-*/
-
-// =================================================================================================
-// Section 2: synchronized blocks vs methods
-// =================================================================================================
-
-/*
-## synchronized blocks vs methods
-
-- `synchronized` on an instance method acquires the monitor of `this`. On a static
-method, it acquires the monitor of the *class object* (`MyClass.class`). These are
-two different monitors.
-- A `synchronized (obj) { ... }` block lets you choose any object as the monitor.
-This gives finer granularity than method-level synchronization and is the modern
-recommendation: the lock object is named, the protected region is small, and you
-can use multiple monitors to break contention.
-- Lock objects should be `private final` and have a single purpose. Never lock on
-public objects (`String` literals, boxed integers, the class itself in a public
-API) — anyone can lock the same object and accidentally deadlock with you.
-*/
-
-// =================================================================================================
-// Section 3: Reentrancy
-// =================================================================================================
-
-/*
-## Reentrancy
-
-- Java intrinsic locks are **reentrant**: the same thread can re-acquire a monitor
-it already holds. The JVM tracks an acquisition count and only releases the
-monitor after the matching number of exits.
-- Without reentrancy, a synchronized method calling another synchronized method
-on the same object would deadlock with itself. With it, recursion and helper-method
-chains are safe.
-- All `java.util.concurrent.locks.Lock` implementations are reentrant for the same
-reason.
-*/
-
-// =================================================================================================
-// Section 4: wait, notify, notifyAll
-// =================================================================================================
-
-/*
-## wait, notify, notifyAll
-
-- `Object.wait()` releases the monitor and parks the calling thread on the
-object's *wait set*. The thread can only call `wait()` while it actually holds
-the monitor — otherwise it gets `IllegalMonitorStateException`.
-- Another thread holding the same monitor calls `notify()` to wake **one** waiter
-or `notifyAll()` to wake **all** of them. The waiters then have to re-acquire the
-monitor before returning from `wait()`.
-- A typical scaffold:
-```java
-synchronized (lock) {
-    while (!condition) lock.wait();
-    // ... act on the condition, then notify if appropriate
-    lock.notifyAll();
-}
-```
-- `notify` wakes an arbitrary waiter; `notifyAll` wakes all of them. Use
-`notifyAll` whenever multiple threads might be waiting on different conditions on
-the same monitor — picking only one of them can cause missed signals.
-*/
-
-// =================================================================================================
-// Section 5: The while-not-if rule
-// =================================================================================================
-
-/*
-## The while-not-if rule
-
-- A wait must always be re-tested in a `while` loop, never an `if`. Reasons:
-  1. **Spurious wakeups** — the JVM is allowed to wake a waiting thread even if no
-     one called `notify`. The condition might still be false.
-  2. **Stolen wakeups** — between `notify` and re-acquisition of the monitor,
-     another thread can change the state, so the condition that was true at notify
-     time might be false again when our thread runs.
-- Therefore: re-evaluate the predicate after each `wait()` returns. The cost of an
-extra evaluation is far below the cost of a subtle bug.
-*/
-
-// =================================================================================================
-// Section 6: Producer–consumer with monitor
-// =================================================================================================
-
-/*
-## Producer–consumer with monitor
-
-- The bounded buffer pattern: producers `put` items, consumers `take` items, the
-buffer has a maximum capacity.
-- One monitor (the buffer's intrinsic lock) protects access; producers wait while
-the buffer is full and consumers wait while it is empty. Both sides call
-`notifyAll` after every change because the same monitor serves two predicates
-("not full" and "not empty").
-- This is the canonical example for `wait/notifyAll`. In real code today you would
-use a `BlockingQueue` (Mod005) or a `ReentrantLock` with two `Condition`s
-(Mod004), both of which are simpler.
-*/
-
 final class BoundedQueue<T> {
     private final Deque<T> items = new ArrayDeque<>();
     private final int capacity;
@@ -140,35 +25,22 @@ final class BoundedQueue<T> {
     public synchronized int size() { return items.size(); }
 }
 
-// =================================================================================================
-// Section 7: Limitations of the intrinsic lock
-// =================================================================================================
-
-/*
-## Limitations of the intrinsic lock
-
-- **No tryLock** — you cannot ask "is the monitor available, or shall I do
-something else?". Threads can only block.
-- **No timeout** — there is no `wait until lock available for at most 100 ms`.
-- **No interruptible acquisition** — a thread blocked on entering a synchronized
-block ignores interrupts. Once it gets in, it can be interrupted while in `wait`,
-but not while it is waiting to acquire the monitor.
-- **A single condition queue** — every monitor has exactly one wait set. If you
-need separate "not full" and "not empty" queues you must use `notifyAll` and
-re-check, or move to `ReentrantLock` with multiple `Condition`s.
-- **No fairness** — the order in which queued threads acquire the monitor is
-unspecified. Long-running threads can starve.
-- **Less observability** — no `getOwner()`, `getQueuedThreads()`, etc.
-
-These limitations motivate `java.util.concurrent.locks.ReentrantLock` covered in
-Mod004.
-*/
-
 public final class Mod003IntrinsicLocks {
 
     private Mod003IntrinsicLocks() {}
 
-    // --- Section 1: intrinsic lock with two competing threads ---
+    /*
+    The intrinsic lock (monitor)
+
+    - Every Java object has an associated intrinsic lock (a monitor). Acquiring that monitor is the only thing the
+      synchronized keyword does.
+    - A monitor is binary: at most one thread holds it at any moment. Other threads that try to acquire it wait in the
+      BLOCKED state.
+    - Holding a monitor establishes a happens-before edge: changes made under one acquire/release of monitor m are
+      visible to any thread that subsequently acquires m. This is the visibility half of synchronization.
+    - Releasing the monitor happens automatically when the synchronized block exits — even via an exception. There is
+      no way to forget to unlock an intrinsic monitor.
+    */
     static void intrinsicLock() throws InterruptedException {
         System.out.println("[Section 1] intrinsic lock");
 
@@ -187,7 +59,18 @@ public final class Mod003IntrinsicLocks {
         t1.join(); t2.join();
     }
 
-    // --- Section 2: synchronized blocks vs methods ---
+    /*
+    synchronized blocks vs methods
+
+    - synchronized on an instance method acquires the monitor of this. On a static method, it acquires the monitor of
+      the class object (MyClass.class). These are two different monitors.
+    - A synchronized (obj) { ... } block lets you choose any object as the monitor. This gives finer granularity than
+      method-level synchronization and is the modern recommendation: the lock object is named, the protected region is
+      small, and you can use multiple monitors to break contention.
+    - Lock objects should be private final and have a single purpose. Never lock on public objects (String literals,
+      boxed integers, the class itself in a public API) — anyone can lock the same object and accidentally deadlock
+      with you.
+    */
     static void blocksVsMethods() {
         System.out.println("[Section 2] blocks vs methods");
 
@@ -209,7 +92,16 @@ public final class Mod003IntrinsicLocks {
         System.out.println("  balance=" + a.getBalance() + ", events=" + a.getEventCount());
     }
 
-    // --- Section 3: reentrancy ---
+    /*
+    Reentrancy
+
+    - Java intrinsic locks are reentrant: the same thread can re-acquire a monitor it already holds. The JVM tracks an
+      acquisition count and only releases the monitor after the matching number of exits.
+    - Without reentrancy, a synchronized method calling another synchronized method on the same object would deadlock
+      with itself. With it, recursion and helper-method chains are safe.
+    - ReentrantLock and ReentrantReadWriteLock are reentrant for the same reason; the Lock views returned by
+      StampedLock.asReadLock() / asWriteLock() are NOT reentrant — see Mod004 §6.
+    */
     static void reentrancy() {
         System.out.println("[Section 3] reentrancy");
 
@@ -230,7 +122,41 @@ public final class Mod003IntrinsicLocks {
         new Outer().outer();
     }
 
-    // --- Sections 4 + 5 + 6: producer–consumer with the bounded queue ---
+    /*
+    wait, notify, notifyAll
+
+    - Object.wait() releases the monitor and parks the calling thread on the object's wait set. The thread can only
+      call wait() while it actually holds the monitor — otherwise it gets IllegalMonitorStateException.
+    - Another thread holding the same monitor calls notify() to wake one waiter or notifyAll() to wake all of them.
+      The waiters then have to re-acquire the monitor before returning from wait().
+    - A typical scaffold:
+    synchronized (lock) {
+        while (!condition) lock.wait();
+        // ... act on the condition, then notify if appropriate
+        lock.notifyAll();
+    }
+    - notify wakes an arbitrary waiter; notifyAll wakes all of them. Use notifyAll whenever multiple threads might be
+      waiting on different conditions on the same monitor — picking only one of them can cause missed signals.
+
+    The while-not-if rule
+
+    - A wait must always be re-tested in a while loop, never an if. Reasons:
+      1. Spurious wakeups — the JVM is allowed to wake a waiting thread even if no one called notify. The condition
+         might still be false.
+      2. Stolen wakeups — between notify and re-acquisition of the monitor, another thread can change the state, so
+         the condition that was true at notify time might be false again when our thread runs.
+    - Therefore: re-evaluate the predicate after each wait() returns. The cost of an extra evaluation is far below the
+      cost of a subtle bug.
+
+    Producer–consumer with monitor
+
+    - The bounded buffer pattern: producers put items, consumers take items, the buffer has a maximum capacity.
+    - One monitor (the buffer's intrinsic lock) protects access; producers wait while the buffer is full and consumers
+      wait while it is empty. Both sides call notifyAll after every change because the same monitor serves two
+      predicates ("not full" and "not empty").
+    - This is the canonical example for wait/notifyAll. In real code today you would use a BlockingQueue (Mod005) or a
+      ReentrantLock with two Conditions (Mod004), both of which are simpler.
+    */
     static void producerConsumer() throws InterruptedException {
         System.out.println("[Section 4-6] producer–consumer with monitor");
 
@@ -260,7 +186,21 @@ public final class Mod003IntrinsicLocks {
         consumer.join();
     }
 
-    // --- Section 7: limitation demo — synchronized cannot be interrupted while queueing ---
+    /*
+    Limitations of the intrinsic lock
+
+    - No tryLock — you cannot ask "is the monitor available, or shall I do something else?". Threads can only block.
+    - No timeout — there is no "wait until lock available for at most 100 ms".
+    - No interruptible acquisition — a thread blocked on entering a synchronized block ignores interrupts. Once it
+      gets in, it can be interrupted while in wait, but not while it is waiting to acquire the monitor.
+    - A single condition queue — every monitor has exactly one wait set. If you need separate "not full" and "not
+      empty" queues you must use notifyAll and re-check, or move to ReentrantLock with multiple Conditions.
+    - No fairness — the order in which queued threads acquire the monitor is unspecified. Long-running threads can
+      starve.
+    - Less observability — no getOwner(), getQueuedThreads(), etc.
+
+    These limitations motivate java.util.concurrent.locks.ReentrantLock covered in Mod004.
+    */
     static void interruptIgnoredAtMonitor() throws InterruptedException {
         System.out.println("[Section 7] synchronized acquisition ignores interrupt");
 

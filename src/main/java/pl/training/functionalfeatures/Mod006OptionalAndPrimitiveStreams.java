@@ -8,123 +8,6 @@ import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
-// =================================================================================================
-// Section 1: Optional<T> semantics
-// =================================================================================================
-
-/*
-## Optional<T> semantics
-
-`Optional<T>` is a *return-type-only* wrapper that says "this method may
-return no value". It exists to make absence explicit at compile time —
-preventing a class of NullPointerExceptions and forcing the caller to handle
-the empty case.
-
-- Construct with `Optional.of(value)` (throws NPE if null),
-  `Optional.ofNullable(value)`, or `Optional.empty()`.
-- **Do not** use `Optional` for fields, parameters, or collection elements.
-  Storing `Optional<List<X>>` is a bug — return an empty list instead. A
-  field of type `Optional<X>` adds an allocation per instance and breaks
-  serialisation.
-- An optional is also not a substitute for `null` in maps. The standard idiom
-  is `Optional.ofNullable(map.get(key))` at the boundary, plain `null` checks
-  inside.
-*/
-
-// =================================================================================================
-// Section 2: Optional API
-// =================================================================================================
-
-/*
-## Optional API
-
-Functional combinators (no need to call `isPresent` + `get`):
-
-- `map(fn)` — apply a function if present.
-- `flatMap(fn)` — for chaining methods that themselves return `Optional`.
-- `filter(p)` — narrow to empty if the predicate fails.
-- `orElse(default)` — return either the value or a default. Eager.
-- `orElseGet(supplier)` — same but lazy.
-- `orElseThrow()` / `orElseThrow(exFactory)` — turn empty into an exception.
-- `ifPresent(consumer)`, `ifPresentOrElse(consumer, runnable)`.
-- `or(supplier)` — if empty, fall back to *another* `Optional` from the
-  supplier (chains alternatives).
-- `stream()` — `Optional<T> -> Stream<T>` of size 0 or 1; useful with
-  `flatMap`.
-*/
-
-// =================================================================================================
-// Section 3: Optional anti-patterns
-// =================================================================================================
-
-/*
-## Optional anti-patterns
-
-The three most common bad smells:
-
-1. `if (opt.isPresent()) doSomething(opt.get());` — call `ifPresent` instead.
-   `get()` should mostly disappear from your codebase outside of asserts and
-   `orElseThrow`.
-2. Returning `Optional<List<X>>` — return an empty list instead. Empty
-   collection is *already* "no result"; wrapping it in `Optional` adds
-   nothing and forces every caller to unwrap.
-3. Using `Optional` as a field, constructor parameter, or method parameter —
-   it is not designed for it. `Optional` carries 16+ bytes of overhead per
-   instance and many libraries (Jackson, Hibernate, JPA) interact poorly
-   with it.
-*/
-
-// =================================================================================================
-// Section 4: Primitive streams
-// =================================================================================================
-
-/*
-## Primitive streams
-
-`IntStream`, `LongStream`, and `DoubleStream` are specialized streams that
-keep elements unboxed. They exist for performance (no `Integer` boxing per
-element) and ergonomics (extra numeric ops on the stream).
-
-- Creation: `IntStream.range(start, endExclusive)`,
-  `IntStream.rangeClosed(start, endInclusive)`, `IntStream.of(...)`,
-  `Arrays.stream(int[])`, `someStream.mapToInt(toIntFn)`.
-- Terminal aggregation: `sum`, `min`, `max`, `average`, `count`. All eager.
-- Convert back to `Stream<Integer>` with `.boxed()` when you need
-  Object-stream operations like `collect`.
-*/
-
-// =================================================================================================
-// Section 5: IntSummaryStatistics
-// =================================================================================================
-
-/*
-## IntSummaryStatistics
-
-`stream.summaryStatistics()` is a single-pass aggregator that computes
-`count`, `sum`, `min`, `max`, and `average` simultaneously. Cheaper than
-running each terminal op independently. Same family for `Long` and `Double`.
-
-The companion collector `Collectors.summarizingInt(toIntFn)` does the same on
-a regular `Stream<T>`.
-*/
-
-// =================================================================================================
-// Section 6: Inter-conversion
-// =================================================================================================
-
-/*
-## Inter-conversion
-
-- `IntStream::boxed`        → `Stream<Integer>`. Useful before `collect`.
-- `Stream<T>::mapToInt`     → `IntStream` (also `mapToLong`, `mapToDouble`).
-- `IntStream::mapToObj(fn)` → `Stream<R>` without going through `boxed`.
-- `IntStream::asLongStream`, `IntStream::asDoubleStream` — widening, no boxing.
-
-Boxing has measurable cost only when the per-element work is small and N is
-large. For small streams, code clarity wins; reach for primitives only when
-profiling says so.
-*/
-
 public final class Mod006OptionalAndPrimitiveStreams {
 
     private Mod006OptionalAndPrimitiveStreams() {}
@@ -146,7 +29,20 @@ public final class Mod006OptionalAndPrimitiveStreams {
         return Optional.ofNullable(USERS.get(id));
     }
 
-    // --- Section 1: Optional construction ---
+    /*
+    Optional<T> semantics
+
+    Optional<T> is a return-type-only wrapper that says "this method may return no value". It exists to make absence
+    explicit at compile time — preventing a class of NullPointerExceptions and forcing the caller to handle the empty
+    case.
+
+    - Construct with Optional.of(value) (throws NPE if null), Optional.ofNullable(value), or Optional.empty().
+    - Do not use Optional for fields, parameters, or collection elements. Storing Optional<List<X>> is a bug —
+      return an empty list instead. A field of type Optional<X> adds an allocation per instance and breaks
+      serialisation.
+    - An optional is also not a substitute for null in maps. The standard idiom is Optional.ofNullable(map.get(key))
+      at the boundary, plain null checks inside.
+    */
     static void optionalSemantics() {
         System.out.println("[Section 1] Optional construction");
 
@@ -156,7 +52,21 @@ public final class Mod006OptionalAndPrimitiveStreams {
         System.out.println("  miss = " + miss);
     }
 
-    // --- Section 2: Optional API ---
+    /*
+    Optional API
+
+    Functional combinators (no need to call isPresent + get):
+
+    - map(fn) — apply a function if present.
+    - flatMap(fn) — for chaining methods that themselves return Optional.
+    - filter(p) — narrow to empty if the predicate fails.
+    - orElse(default) — return either the value or a default. Eager.
+    - orElseGet(supplier) — same but lazy.
+    - orElseThrow() / orElseThrow(exFactory) — turn empty into an exception.
+    - ifPresent(consumer), ifPresentOrElse(consumer, runnable).
+    - or(supplier) — if empty, fall back to another Optional from the supplier (chains alternatives).
+    - stream() — Optional<T> -> Stream<T> of size 0 or 1; useful with flatMap.
+    */
     static void optionalApi() {
         System.out.println("[Section 2] Optional API");
 
@@ -192,7 +102,19 @@ public final class Mod006OptionalAndPrimitiveStreams {
         System.out.println("  flatMap(Optional::stream) = " + allDisplayNames);
     }
 
-    // --- Section 3: Optional anti-patterns ---
+    /*
+    Optional anti-patterns
+
+    The three most common bad smells:
+
+    1. if (opt.isPresent()) doSomething(opt.get()); — call ifPresent instead. get() should mostly disappear from
+       your codebase outside of asserts and orElseThrow.
+    2. Returning Optional<List<X>> — return an empty list instead. Empty collection is already "no result"; wrapping
+       it in Optional adds nothing and forces every caller to unwrap.
+    3. Using Optional as a field, constructor parameter, or method parameter — it is not designed for it. Optional
+       carries 16+ bytes of overhead per instance and many libraries (Jackson, Hibernate, JPA) interact poorly with
+       it.
+    */
     static void optionalAntiPatterns() {
         System.out.println("[Section 3] Optional anti-patterns");
 
@@ -215,7 +137,17 @@ public final class Mod006OptionalAndPrimitiveStreams {
         return CATALOG.stream().filter(p -> p.sku().contains(query)).toList();
     }
 
-    // --- Section 4: primitive streams ---
+    /*
+    Primitive streams
+
+    IntStream, LongStream, and DoubleStream are specialized streams that keep elements unboxed. They exist for
+    performance (no Integer boxing per element) and ergonomics (extra numeric ops on the stream).
+
+    - Creation: IntStream.range(start, endExclusive), IntStream.rangeClosed(start, endInclusive),
+      IntStream.of(...), Arrays.stream(int[]), someStream.mapToInt(toIntFn).
+    - Terminal aggregation: sum, min, max, average, count. All eager.
+    - Convert back to Stream<Integer> with .boxed() when you need Object-stream operations like collect.
+    */
     static void primitiveStreams() {
         System.out.println("[Section 4] primitive streams");
 
@@ -230,7 +162,14 @@ public final class Mod006OptionalAndPrimitiveStreams {
         System.out.println("  evens in 1..100 = " + evens);
     }
 
-    // --- Section 5: summary statistics ---
+    /*
+    IntSummaryStatistics
+
+    stream.summaryStatistics() is a single-pass aggregator that computes count, sum, min, max, and average
+    simultaneously. Cheaper than running each terminal op independently. Same family for Long and Double.
+
+    The companion collector Collectors.summarizingInt(toIntFn) does the same on a regular Stream<T>.
+    */
     static void summaryStatistics() {
         System.out.println("[Section 5] summary statistics");
 
@@ -242,7 +181,17 @@ public final class Mod006OptionalAndPrimitiveStreams {
                 stats.getCount(), stats.getSum(), stats.getMin(), stats.getMax(), stats.getAverage());
     }
 
-    // --- Section 6: inter-conversion ---
+    /*
+    Inter-conversion
+
+    - IntStream::boxed        → Stream<Integer>. Useful before collect.
+    - Stream<T>::mapToInt     → IntStream (also mapToLong, mapToDouble).
+    - IntStream::mapToObj(fn) → Stream<R> without going through boxed.
+    - IntStream::asLongStream, IntStream::asDoubleStream — widening, no boxing.
+
+    Boxing has measurable cost only when the per-element work is small and N is large. For small streams, code
+    clarity wins; reach for primitives only when profiling says so.
+    */
     static void interConversion() {
         System.out.println("[Section 6] inter-conversion");
 

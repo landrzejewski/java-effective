@@ -20,111 +20,6 @@ import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 import java.util.function.UnaryOperator;
 
-// =================================================================================================
-// Section 1: Predicate<T>
-// =================================================================================================
-
-/*
-## Predicate<T>
-
-- The shape `T -> boolean`. Used to filter, partition, validate, and short-circuit.
-- Combinators built into the interface:
-  - `p.and(q)` — short-circuit AND. The right-hand side is not evaluated if `p` is false.
-  - `p.or(q)`  — short-circuit OR.
-  - `p.negate()` — complement.
-- Static helpers:
-  - `Predicate.isEqual(x)` — `t -> x.equals(t)`. Null-safe on the left side.
-  - `Predicate.not(p)` — same as `p.negate()` but reads better in stream pipelines:
-    `.filter(Predicate.not(String::isBlank))`.
-*/
-
-// =================================================================================================
-// Section 2: Function<T,R> and UnaryOperator<T>
-// =================================================================================================
-
-/*
-## Function<T,R> and UnaryOperator<T>
-
-- `Function<T,R>` shape: `T -> R`. The general transformation type.
-- `UnaryOperator<T> extends Function<T,T>` — same input and output type. Use it
-  whenever the transformation preserves the type (e.g., `String -> String` for
-  trimming and casing).
-- Combinators:
-  - `f.andThen(g)` — first `f`, then `g`. Reads left-to-right.
-  - `f.compose(g)` — first `g`, then `f`. Reads right-to-left, i.e.
-    `f.compose(g).apply(x) == f.apply(g.apply(x))`.
-- `Function.identity()` is the do-nothing function. Useful as a default
-  parameter or when a `Function` is structurally required but no transformation
-  is wanted.
-*/
-
-// =================================================================================================
-// Section 3: Consumer<T> and BiConsumer<T,U>
-// =================================================================================================
-
-/*
-## Consumer<T> and BiConsumer<T,U>
-
-- Side-effecting types: `T -> void`, `(T, U) -> void`. They produce no value.
-- Used by `forEach` (collections, streams, `Map.forEach`).
-- `andThen` chains two consumers — both run, in order. Useful for telemetry +
-  business logic combinations.
-*/
-
-// =================================================================================================
-// Section 4: Supplier<T>
-// =================================================================================================
-
-/*
-## Supplier<T>
-
-- Shape `() -> T`. A *thunk*. Most useful when the value should be produced on
-demand, not eagerly:
-  - `Optional.orElseGet(supplier)` — only invoked if the optional is empty.
-  - `Logger.log(level, supplier)` — only invoked if the level is enabled.
-  - `Stream.generate(supplier)` — infinite generator.
-- Pairs with `BooleanSupplier`, `IntSupplier`, `LongSupplier`,
-  `DoubleSupplier` for primitive returns without boxing.
-*/
-
-// =================================================================================================
-// Section 5: Bi-argument variants
-// =================================================================================================
-
-/*
-## Bi-argument variants
-
-- `BiPredicate<T,U>` — `(T,U) -> boolean`.
-- `BiFunction<T,U,R>` — `(T,U) -> R`. Returns a value.
-- `BinaryOperator<T> extends BiFunction<T,T,T>` — same type for both inputs and
-  output. Used for reductions and "merge" callbacks (`Map.merge`,
-  `Stream.reduce`).
-- Static helpers on `BinaryOperator`: `minBy(comparator)`, `maxBy(comparator)`.
-- For arities greater than two, you need a custom interface (Mod001 §5) or
-  curry/partially apply: `(a, b) -> (c) -> ...`.
-*/
-
-// =================================================================================================
-// Section 6: Primitive specializations
-// =================================================================================================
-
-/*
-## Primitive specializations
-
-- For each primitive type (int, long, double, boolean), `java.util.function`
-  provides "specialized" interfaces that take or return the primitive
-  unboxed:
-  - `IntPredicate`, `IntFunction<R>`, `IntUnaryOperator`, `IntBinaryOperator`.
-  - `ToIntFunction<T>`, `IntToLongFunction`, `IntToDoubleFunction`.
-- Why bother? Each `int` boxed into `Integer` is an allocation. In tight
-  pipelines (millions of elements), that overhead dominates. Specialized
-  interfaces and the parallel `IntStream`/`LongStream`/`DoubleStream` keep
-  things on the stack.
-- Rule of thumb: use the boxed `Function<T,R>` family for ergonomic code with
-  small N; switch to the primitive variants when profiling shows boxing on the
-  hot path.
-*/
-
 public final class Mod002BuiltInFunctionalInterfaces {
 
     private Mod002BuiltInFunctionalInterfaces() {}
@@ -137,7 +32,19 @@ public final class Mod002BuiltInFunctionalInterfaces {
             new Customer("Bob",   "BOB@EXAMPLE.COM",   17),
             new Customer("Carla", "carla@example.com", 35));
 
-    // --- Section 1: Predicate combinators ---
+    /*
+    Predicate<T>
+
+    - The shape T -> boolean. Used to filter, partition, validate, and short-circuit.
+    - Combinators built into the interface:
+      - p.and(q) — short-circuit AND. The right-hand side is not evaluated if p is false.
+      - p.or(q)  — short-circuit OR.
+      - p.negate() — complement.
+    - Static helpers:
+      - Predicate.isEqual(x) — t -> x.equals(t). Null-safe on the left side.
+      - Predicate.not(p) — same as p.negate() but reads better in stream pipelines:
+        .filter(Predicate.not(String::isBlank)).
+    */
     static void predicateCombinators() {
         System.out.println("[Section 1] Predicate combinators");
 
@@ -153,7 +60,18 @@ public final class Mod002BuiltInFunctionalInterfaces {
         System.out.println("  Predicate.not(blank) -> " + named.size() + " kept");
     }
 
-    // --- Section 2: Function / UnaryOperator + andThen / compose ---
+    /*
+    Function<T,R> and UnaryOperator<T>
+
+    - Function<T,R> shape: T -> R. The general transformation type.
+    - UnaryOperator<T> extends Function<T,T> — same input and output type. Use it whenever the transformation
+      preserves the type (e.g., String -> String for trimming and casing).
+    - Combinators:
+      - f.andThen(g) — first f, then g. Reads left-to-right.
+      - f.compose(g) — first g, then f. Reads right-to-left, i.e. f.compose(g).apply(x) == f.apply(g.apply(x)).
+    - Function.identity() is the do-nothing function. Useful as a default parameter or when a Function is
+      structurally required but no transformation is wanted.
+    */
     static void functionAndUnaryOperator() {
         System.out.println("[Section 2] Function / UnaryOperator");
 
@@ -172,7 +90,13 @@ public final class Mod002BuiltInFunctionalInterfaces {
         System.out.println("  plus3.compose(times2).apply(5) = " + plus3.compose(times2).apply(5)); // (5*2)+3 = 13
     }
 
-    // --- Section 3: Consumer / BiConsumer with andThen ---
+    /*
+    Consumer<T> and BiConsumer<T,U>
+
+    - Side-effecting types: T -> void, (T, U) -> void. They produce no value.
+    - Used by forEach (collections, streams, Map.forEach).
+    - andThen chains two consumers — both run, in order. Useful for telemetry + business logic combinations.
+    */
     static void consumerCombinators() {
         System.out.println("[Section 3] Consumer / BiConsumer");
 
@@ -188,7 +112,15 @@ public final class Mod002BuiltInFunctionalInterfaces {
         Map.of("Alice", 28, "Bob", 17).forEach(mapEntry);
     }
 
-    // --- Section 4: Supplier — lazy evaluation ---
+    /*
+    Supplier<T>
+
+    - Shape () -> T. A thunk. Most useful when the value should be produced on demand, not eagerly:
+      - Optional.orElseGet(supplier) — only invoked if the optional is empty.
+      - Logger.log(level, supplier) — only invoked if the level is enabled.
+      - Stream.generate(supplier) — infinite generator.
+    - Pairs with BooleanSupplier, IntSupplier, LongSupplier, DoubleSupplier for primitive returns without boxing.
+    */
     static void supplierLaziness() {
         System.out.println("[Section 4] Supplier — laziness");
 
@@ -205,7 +137,17 @@ public final class Mod002BuiltInFunctionalInterfaces {
         System.out.println("  orElseGet value: " + l);
     }
 
-    // --- Section 5: Bi-argument variants ---
+    /*
+    Bi-argument variants
+
+    - BiPredicate<T,U> — (T,U) -> boolean.
+    - BiFunction<T,U,R> — (T,U) -> R. Returns a value.
+    - BinaryOperator<T> extends BiFunction<T,T,T> — same type for both inputs and output. Used for reductions and
+      "merge" callbacks (Map.merge, Stream.reduce).
+    - Static helpers on BinaryOperator: minBy(comparator), maxBy(comparator).
+    - For arities greater than two, you need a custom interface (Mod001 §5) or curry/partially apply:
+      (a, b) -> (c) -> ....
+    */
     static void biVariants() {
         System.out.println("[Section 5] Bi-argument variants");
 
@@ -223,7 +165,19 @@ public final class Mod002BuiltInFunctionalInterfaces {
         System.out.println("  hits per name: " + hits);
     }
 
-    // --- Section 6: Primitive specializations ---
+    /*
+    Primitive specializations
+
+    - For each primitive type (int, long, double, boolean), java.util.function provides "specialized" interfaces
+      that take or return the primitive unboxed:
+      - IntPredicate, IntFunction<R>, IntUnaryOperator, IntBinaryOperator.
+      - ToIntFunction<T>, IntToLongFunction, IntToDoubleFunction.
+    - Why bother? Each int boxed into Integer is an allocation. In tight pipelines (millions of elements), that
+      overhead dominates. Specialized interfaces and the parallel IntStream/LongStream/DoubleStream keep things on
+      the stack.
+    - Rule of thumb: use the boxed Function<T,R> family for ergonomic code with small N; switch to the primitive
+      variants when profiling shows boxing on the hot path.
+    */
     static void primitiveSpecializations() {
         System.out.println("[Section 6] Primitive specializations");
 

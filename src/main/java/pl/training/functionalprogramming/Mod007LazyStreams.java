@@ -8,101 +8,13 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
-// =================================================================================================
-// Section 1: Lazy vs strict
-// =================================================================================================
-
 /*
-## Lazy vs strict
+How this differs from java.util.stream.Stream
 
-- A *strict* function evaluates its arguments before the call. Java's
-  default — `f(g(x))` always runs `g(x)` first.
-- A *lazy* function defers evaluation: instead of a value, it receives a
-  thunk (`Supplier`) that produces the value on demand.
-- Laziness lets you describe **infinite** structures and pipeline them:
-  the consumer pulls only as many elements as it needs.
-- This module rebuilds Stream from scratch with cons-cell laziness so the
-  mechanism is visible. The JDK's `java.util.stream.Stream` works with
-  the same pull model but materialises one-shot.
-*/
-
-// =================================================================================================
-// Section 2: A cons-cell Stream
-// =================================================================================================
-
-/*
-## A cons-cell Stream
-
-```
-sealed interface Stream<A> permits Empty, Cons {}
-record Empty<A>()                                  implements Stream<A> {}
-record Cons<A>(Supplier<A> head, Supplier<Stream<A>> tail) implements Stream<A> {}
-```
-
-The crucial detail: `head` and `tail` are *thunks*, not eager values.
-A `Stream.of(1, 2, 3)` does not evaluate `1`, `2`, or `3` until something
-asks for them.
-*/
-
-// =================================================================================================
-// Section 3: Combinators
-// =================================================================================================
-
-/*
-## Combinators
-
-All preserve laziness:
-
-- `take(n)`              — first n elements; nothing computed beyond them.
-- `takeWhile(p)`         — elements while the predicate holds.
-- `map(f)`, `filter(p)`  — transformed view; new thunks wrap the originals.
-- `zip(other)`           — pairs of corresponding elements; ends when
-                           either side runs out.
-*/
-
-// =================================================================================================
-// Section 4: Infinite streams
-// =================================================================================================
-
-/*
-## Infinite streams
-
-- `iterate(seed, fn)` — `seed, fn(seed), fn(fn(seed)), ...`.
-- `unfold(seed, step)` — generic generator: `step(state)` returns
-  `Some((value, nextState))` or `None` to terminate.
-
-Without a `take` upstream of any terminal op, an infinite stream loops
-forever. Lazy combinators safely compose with `take`/`takeWhile`.
-*/
-
-// =================================================================================================
-// Section 5: How this differs from java.util.stream.Stream
-// =================================================================================================
-
-/*
-## How this differs from java.util.stream.Stream
-
-- The JDK Stream uses the **same pull model** (intermediate ops do not
-  produce values until a terminal op pulls).
-- The JDK Stream is **single-shot**: after one terminal op the source is
-  consumed. Our cons-cell Stream is **re-iterable** because the thunks
-  are still in place.
-- Our Stream lacks parallel execution; the JDK Stream gets that via the
-  ForkJoin common pool.
-*/
-
-// =================================================================================================
-// Section 6: End-to-end — first 10 primes + first 12 Fibonacci
-// =================================================================================================
-
-/*
-## End-to-end — first 10 primes + first 12 Fibonacci
-
-- Build an infinite stream of natural numbers, filter out non-primes
-  (trial division), `take(10)` the result.
-- Build a Fibonacci stream by `unfold`-ing a `(prev, curr)` pair,
-  `take(12)`.
-- Compare both lists against an independent reference computation.
+- The JDK Stream uses the same pull model (intermediate ops do not produce values until a terminal op pulls).
+- The JDK Stream is single-shot: after one terminal op the source is consumed. Our cons-cell Stream is re-iterable
+  because the thunks are still in place.
+- Our Stream lacks parallel execution; the JDK Stream gets that via the ForkJoin common pool.
 */
 
 public final class Mod007LazyStreams {
@@ -213,6 +125,17 @@ public final class Mod007LazyStreams {
     // Sections
     // =================================================================================================
 
+    /*
+    Lazy vs strict
+
+    - A strict function evaluates its arguments before the call. Java's default — f(g(x)) always runs g(x) first.
+    - A lazy function defers evaluation: instead of a value, it receives a thunk (Supplier) that produces the value
+      on demand.
+    - Laziness lets you describe infinite structures and pipeline them: the consumer pulls only as many elements as
+      it needs.
+    - This module rebuilds Stream from scratch with cons-cell laziness so the mechanism is visible. The JDK's
+      java.util.stream.Stream works with the same pull model but materialises one-shot.
+    */
     static void lazyVsStrict() {
         System.out.println("[Section 1] lazy vs strict");
         Supplier<Integer> thunk = () -> { System.out.println("    (computing 42)"); return 42; };
@@ -221,12 +144,32 @@ public final class Mod007LazyStreams {
         System.out.println("  pulling head: " + s.head().get());
     }
 
+    /*
+    A cons-cell Stream
+
+    sealed interface Stream<A> permits Empty, Cons {}
+    record Empty<A>()                                  implements Stream<A> {}
+    record Cons<A>(Supplier<A> head, Supplier<Stream<A>> tail) implements Stream<A> {}
+
+    The crucial detail: head and tail are thunks, not eager values. A Stream.of(1, 2, 3) does not evaluate 1, 2, or
+    3 until something asks for them.
+    */
     static void streamShape() {
         System.out.println("[Section 2] cons-cell Stream");
         var s = Stream.of(1, 2, 3);
         System.out.println("  Stream.of(1,2,3).toList() = " + s.toList());
     }
 
+    /*
+    Combinators
+
+    All preserve laziness:
+
+    - take(n)              — first n elements; nothing computed beyond them.
+    - takeWhile(p)         — elements while the predicate holds.
+    - map(f), filter(p)    — transformed view; new thunks wrap the originals.
+    - zip(other)           — pairs of corresponding elements; ends when either side runs out.
+    */
     static void combinators() {
         System.out.println("[Section 3] combinators");
         var s = Stream.of(1, 2, 3, 4, 5, 6);
@@ -240,6 +183,15 @@ public final class Mod007LazyStreams {
         System.out.println("  zip(letters, nums) = " + letters.zip(nums).toList());
     }
 
+    /*
+    Infinite streams
+
+    - iterate(seed, fn) — seed, fn(seed), fn(fn(seed)), ....
+    - unfold(seed, step) — generic generator: step(state) returns Some((value, nextState)) or None to terminate.
+
+    Without a take upstream of any terminal op, an infinite stream loops forever. Lazy combinators safely compose
+    with take/takeWhile.
+    */
     static void infiniteStreams() {
         System.out.println("[Section 4] infinite streams");
         var naturals = Stream.iterate(1, n -> n + 1);
@@ -252,6 +204,13 @@ public final class Mod007LazyStreams {
         return true;
     }
 
+    /*
+    End-to-end — first 10 primes + first 12 Fibonacci
+
+    - Build an infinite stream of natural numbers, filter out non-primes (trial division), take(10) the result.
+    - Build a Fibonacci stream by unfold-ing a (prev, curr) pair, take(12).
+    - Compare both lists against an independent reference computation.
+    */
     static void endToEnd() {
         System.out.println("[Section 6] end-to-end self-checks");
 

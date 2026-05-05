@@ -6,105 +6,6 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 
-// =================================================================================================
-// Section 1: Creating streams
-// =================================================================================================
-
-/*
-## Creating streams
-
-Six common entry points:
-
-- `collection.stream()` — from any `Collection`. Most ubiquitous.
-- `Stream.of(a, b, c, ...)` — from a fixed varargs list.
-- `Arrays.stream(array)` — from an array; primitive overloads return
-  `IntStream`/`LongStream`/`DoubleStream`.
-- `Stream.iterate(seed, fn)` — infinite stream by repeated function
-  application. Bounded version `Stream.iterate(seed, hasNext, next)` (Java 9+)
-  expresses a finite recurrence.
-- `Stream.generate(supplier).limit(n)` — infinite, then bounded.
-- `Stream.builder()` — imperative push-style construction; rarely needed.
-
-Streams are *not* containers. They have no storage; they pull from a source
-and push values through a pipeline.
-*/
-
-// =================================================================================================
-// Section 2: Intermediate operations
-// =================================================================================================
-
-/*
-## Intermediate operations
-
-All intermediate ops return another `Stream` and are *lazy* — they remember
-what to do but do nothing until a terminal op pulls.
-
-- `filter(predicate)` — keep elements matching the predicate.
-- `map(fn)` — transform each element.
-- `flatMap(fn)` — transform each element into a stream, then flatten.
-- `distinct()` — remove duplicates by `equals`. Stateful — remembers what it
-  has seen.
-- `sorted([cmp])` — sort. Stateful and blocking — must consume the entire
-  source before emitting.
-- `peek(consumer)` — debugging hook; the consumer runs as elements flow past.
-- `limit(n)` / `skip(n)` — short-circuiting and stateful, respectively.
-- `takeWhile(p)` / `dropWhile(p)` — stop / start emitting on first failure
-  (Java 9+).
-*/
-
-// =================================================================================================
-// Section 3: Terminal operations
-// =================================================================================================
-
-/*
-## Terminal operations
-
-Eager — they pull elements through the pipeline and produce a final result.
-After a terminal op the stream is consumed and cannot be reused.
-
-- `forEach(consumer)` — side-effecting iteration.
-- `collect(collector)` — accumulate into a collection or map (Mod005).
-- `reduce(...)` — fold into a single value.
-- `count()`, `min(cmp)`, `max(cmp)` — aggregate.
-- `findFirst()`, `findAny()` — short-circuit; return `Optional`.
-- `anyMatch(p)`, `allMatch(p)`, `noneMatch(p)` — short-circuit predicates.
-- `toList()` (Java 16+) — concise replacement for
-  `collect(Collectors.toList())`; result is unmodifiable.
-*/
-
-// =================================================================================================
-// Section 4: Lazy evaluation
-// =================================================================================================
-
-/*
-## Lazy evaluation
-
-- An intermediate op alone does nothing. The pipeline only runs when a
-  terminal op is invoked.
-- `peek` is the easiest way to see this: without a terminal op, the consumer
-  passed to `peek` never fires.
-- Short-circuiting terminal ops (`findFirst`, `anyMatch`, `limit` upstream of
-  any terminal) consume only as much of the source as needed. This makes
-  pipelines on infinite streams useful — `Stream.iterate(0, i -> i+1).filter(...)
-  .findFirst()` will return after the first match.
-*/
-
-// =================================================================================================
-// Section 5: One-shot streams
-// =================================================================================================
-
-/*
-## One-shot streams
-
-A `Stream` can be consumed exactly once. Reaching for the same stream variable
-after a terminal op throws `IllegalStateException: stream has already been
-operated upon or closed`.
-
-To "reuse", create a fresh stream from the source each time. If the source is
-expensive to traverse repeatedly, materialise once with `.toList()` and stream
-from the list.
-*/
-
 public final class Mod004StreamBasics {
 
     private Mod004StreamBasics() {}
@@ -121,7 +22,21 @@ public final class Mod004StreamBasics {
             new Order("bob",   "SKU-004",  3,  49.50),
             new Order("alice", "SKU-002",  1, 199.00));
 
-    // --- Section 1: stream creation ---
+    /*
+    Creating streams
+
+    Six common entry points:
+
+    - collection.stream() — from any Collection. Most ubiquitous.
+    - Stream.of(a, b, c, ...) — from a fixed varargs list.
+    - Arrays.stream(array) — from an array; primitive overloads return IntStream/LongStream/DoubleStream.
+    - Stream.iterate(seed, fn) — infinite stream by repeated function application. Bounded version
+      Stream.iterate(seed, hasNext, next) (Java 9+) expresses a finite recurrence.
+    - Stream.generate(supplier).limit(n) — infinite, then bounded.
+    - Stream.builder() — imperative push-style construction; rarely needed.
+
+    Streams are not containers. They have no storage; they pull from a source and push values through a pipeline.
+    */
     static void creatingStreams() {
         System.out.println("[Section 1] creating streams");
 
@@ -152,7 +67,21 @@ public final class Mod004StreamBasics {
         System.out.println("  Stream.builder() = " + built);
     }
 
-    // --- Section 2: intermediate operations ---
+    /*
+    Intermediate operations
+
+    All intermediate ops return another Stream and are lazy — they remember what to do but do nothing until a
+    terminal op pulls.
+
+    - filter(predicate) — keep elements matching the predicate.
+    - map(fn) — transform each element.
+    - flatMap(fn) — transform each element into a stream, then flatten.
+    - distinct() — remove duplicates by equals. Stateful — remembers what it has seen.
+    - sorted([cmp]) — sort. Stateful and blocking — must consume the entire source before emitting.
+    - peek(consumer) — debugging hook; the consumer runs as elements flow past.
+    - limit(n) / skip(n) — short-circuiting and stateful, respectively.
+    - takeWhile(p) / dropWhile(p) — stop / start emitting on first failure (Java 9+).
+    */
     static void intermediateOps() {
         System.out.println("[Section 2] intermediate operations");
 
@@ -181,7 +110,20 @@ public final class Mod004StreamBasics {
         System.out.println("  dropWhile(<4) = " + drop);
     }
 
-    // --- Section 3: terminal operations ---
+    /*
+    Terminal operations
+
+    Eager — they pull elements through the pipeline and produce a final result. After a terminal op the stream is
+    consumed and cannot be reused.
+
+    - forEach(consumer) — side-effecting iteration.
+    - collect(collector) — accumulate into a collection or map (Mod005).
+    - reduce(...) — fold into a single value.
+    - count(), min(cmp), max(cmp) — aggregate.
+    - findFirst(), findAny() — short-circuit; return Optional.
+    - anyMatch(p), allMatch(p), noneMatch(p) — short-circuit predicates.
+    - toList() (Java 16+) — concise replacement for collect(Collectors.toList()); result is unmodifiable.
+    */
     static void terminalOps() {
         System.out.println("[Section 3] terminal operations");
 
@@ -202,7 +144,15 @@ public final class Mod004StreamBasics {
         System.out.printf("  reduce sum    = %.2f%n", sum);
     }
 
-    // --- Section 4: lazy evaluation ---
+    /*
+    Lazy evaluation
+
+    - An intermediate op alone does nothing. The pipeline only runs when a terminal op is invoked.
+    - peek is the easiest way to see this: without a terminal op, the consumer passed to peek never fires.
+    - Short-circuiting terminal ops (findFirst, anyMatch, limit upstream of any terminal) consume only as much of
+      the source as needed. This makes pipelines on infinite streams useful — Stream.iterate(0, i -> i+1).filter(...)
+      .findFirst() will return after the first match.
+    */
     static void lazyEvaluation() {
         System.out.println("[Section 4] lazy evaluation");
 
@@ -224,7 +174,15 @@ public final class Mod004StreamBasics {
         System.out.println("  first 5 squares = " + firstFiveSquares);
     }
 
-    // --- Section 5: one-shot streams ---
+    /*
+    One-shot streams
+
+    A Stream can be consumed exactly once. Reaching for the same stream variable after a terminal op throws
+    IllegalStateException: stream has already been operated upon or closed.
+
+    To "reuse", create a fresh stream from the source each time. If the source is expensive to traverse repeatedly,
+    materialise once with .toList() and stream from the list.
+    */
     static void oneShotStream() {
         System.out.println("[Section 5] one-shot stream");
 

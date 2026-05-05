@@ -12,153 +12,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-// =================================================================================================
-// Section 1: Promise vs Future
-// =================================================================================================
-
 /*
-## Promise vs Future
+Promise vs Future
 
-- A `Future<V>` represents a value that will be available later. Java 5's `Future`
-exposes `get()`, `cancel()`, and `isDone()` — that is, you can wait, but you
-cannot **chain**. Composing two `Future`s requires a thread that blocks on the
-first one.
-- `CompletableFuture<V>` is a *promise*: a future you can complete from the
-outside (`complete`, `completeExceptionally`) and chain (`thenApply`,
-`thenCompose`, `thenCombine`, ...). Continuations are pushed; no thread sits
-blocked.
-- This unlocks declarative async pipelines: you describe the data flow once and
-the runtime schedules each stage on a worker as soon as its inputs are ready.
-*/
-
-// =================================================================================================
-// Section 2: Creating async pipelines
-// =================================================================================================
-
-/*
-## Creating async pipelines
-
-- `CompletableFuture.supplyAsync(supplier)` runs the supplier on the common
-ForkJoinPool and returns a future for its result.
-- `CompletableFuture.runAsync(runnable)` is the void variant.
-- Both have overloads that take an explicit `Executor`. **Always pass a custom
-executor** for blocking I/O — running blocking code on the common pool starves
-parallel streams and CompletableFuture chains used elsewhere in the JVM.
-*/
-
-// =================================================================================================
-// Section 3: Mapping vs flat-mapping (thenApply vs thenCompose)
-// =================================================================================================
-
-/*
-## Mapping vs flat-mapping (thenApply vs thenCompose)
-
-- `thenApply(Function<T, U>)` is the *map* operator — applies a synchronous
-function to the resolved value.
-- `thenCompose(Function<T, CompletableFuture<U>>)` is the *flat-map* operator —
-the function returns another future, and `thenCompose` flattens the result so
-you do not end up with `CompletableFuture<CompletableFuture<U>>`.
-- Rule of thumb: if the next step is itself an async call, use `thenCompose`. If
-it is a pure transformation, use `thenApply`.
-*/
-
-// =================================================================================================
-// Section 4: Combining
-// =================================================================================================
-
-/*
-## Combining
-
-- `thenCombine(other, BiFunction)` waits for both futures and combines their
-results. Like `zip`.
-- `allOf(f1, f2, ...)` returns `CompletableFuture<Void>` that completes when all
-inputs do. Read each individual `f.join()` afterwards to get the values.
-- `anyOf(...)` completes when the first input does, with that input's value.
-- `applyToEither(other, fn)` is the typed equivalent of `anyOf` for two futures
-of the same type.
-*/
-
-// =================================================================================================
-// Section 5: Error handling
-// =================================================================================================
-
-/*
-## Error handling
-
-- `exceptionally(Function<Throwable, T>)` recovers from a failure by producing a
-fallback value of the same type. Subsequent stages do not see the failure.
-- `handle(BiFunction<T, Throwable, U>)` runs in either case (success or
-failure) and lets you decide what to produce.
-- `whenComplete(BiConsumer<T, Throwable>)` is the listener form — it cannot
-change the value; useful for logging or metric emission.
-- An unhandled exception inside any stage propagates downstream wrapped in a
-`CompletionException`. Calling `get()` then throws `ExecutionException`; calling
-`join()` throws `CompletionException` (unchecked) — the latter is more pleasant
-for chaining.
-*/
-
-// =================================================================================================
-// Section 6: Timeouts
-// =================================================================================================
-
-/*
-## Timeouts
-
-- `orTimeout(t, unit)` (Java 9+) completes the future exceptionally with
-`TimeoutException` if it has not finished in time.
-- `completeOnTimeout(value, t, unit)` completes successfully with a fallback
-value instead.
-- Pre-Java 9 you had to wire your own timer via a `ScheduledExecutorService` —
-the `applyToEither` + scheduler trick. Today, prefer the built-ins.
-*/
-
-// =================================================================================================
-// Section 7: Retry with exponential backoff
-// =================================================================================================
-
-/*
-## Retry with exponential backoff
-
-- A common real-world need: retry an idempotent failing call a few times,
-doubling the delay between attempts.
-- The pattern: call the supplier; on `exceptionally`, schedule the next attempt
-on a `ScheduledExecutorService` and `thenCompose` to its result. Recurse until
-attempts are exhausted, then propagate the last failure.
-*/
-
-// =================================================================================================
-// Section 8: Real-world fan-out
-// =================================================================================================
-
-/*
-## Real-world fan-out
-
-- Frontend dashboards typically call several services in parallel and combine
-the answers. The natural shape is `supplyAsync` per service, then either
-`thenCombine` for two of them or `allOf` + `f.join()` for many.
-- Bonus: pin all stages to a dedicated `Executor` so a slow downstream cannot
-contend with the common pool.
-- Caveat: `CompletableFuture` does NOT propagate cancellation. Cancelling one
-sibling does not stop the others. Mod012 (`StructuredTaskScope`) is the modern
-fix.
-*/
-
-// =================================================================================================
-// Section 9: Limitations and forward-link to structured concurrency
-// =================================================================================================
-
-/*
-## Limitations and forward-link to structured concurrency
-
-- `cancel(true)` on a `CompletableFuture` only marks the future as cancelled —
-the running task is **not** interrupted, and pending parallel siblings continue.
-- A failure in one branch of a fan-out does not cancel the rest, so you keep
-paying for work whose result you will discard.
-- Chaining is opaque to thread dumps: a stage running on a common-pool worker
-does not show the call site that scheduled it.
-- For coordinated fan-out with all-or-nothing semantics, prefer
-`StructuredTaskScope` (Mod012). Use `CompletableFuture` for *async-event*
-plumbing (UI callbacks, message buses) where there is no natural parent task.
+- A Future<V> represents a value that will be available later. Java 5's Future exposes get(), cancel(), and isDone()
+  — that is, you can wait, but you cannot chain. Composing two Futures requires a thread that blocks on the first one.
+- CompletableFuture<V> is a promise: a future you can complete from the outside (complete, completeExceptionally) and
+  chain (thenApply, thenCompose, thenCombine, ...). Continuations are pushed; no thread sits blocked.
+- This unlocks declarative async pipelines: you describe the data flow once and the runtime schedules each stage on a
+  worker as soon as its inputs are ready.
 */
 
 public final class Mod009CompletableFuture {
@@ -168,7 +30,16 @@ public final class Mod009CompletableFuture {
     private static final ScheduledExecutorService SCHEDULER =
             Executors.newScheduledThreadPool(1, r -> Thread.ofPlatform().daemon(true).unstarted(r));
 
-    // --- Section 2: simple async pipeline ---
+    /*
+    Creating async pipelines
+
+    - CompletableFuture.supplyAsync(supplier) runs the supplier on the common ForkJoinPool and returns a future for
+      its result.
+    - CompletableFuture.runAsync(runnable) is the void variant.
+    - Both have overloads that take an explicit Executor. Always pass a custom executor for blocking I/O — running
+      blocking code on the common pool starves parallel streams and CompletableFuture chains used elsewhere in the
+      JVM.
+    */
     static void asyncPipeline() {
         System.out.println("[Section 2] async pipeline");
 
@@ -180,7 +51,15 @@ public final class Mod009CompletableFuture {
         System.out.println("  result = " + f.join());
     }
 
-    // --- Section 3: thenApply vs thenCompose ---
+    /*
+    Mapping vs flat-mapping (thenApply vs thenCompose)
+
+    - thenApply(Function<T, U>) is the map operator — applies a synchronous function to the resolved value.
+    - thenCompose(Function<T, CompletableFuture<U>>) is the flat-map operator — the function returns another future,
+      and thenCompose flattens the result so you do not end up with CompletableFuture<CompletableFuture<U>>.
+    - Rule of thumb: if the next step is itself an async call, use thenCompose. If it is a pure transformation, use
+      thenApply.
+    */
     static void applyVsCompose() {
         System.out.println("[Section 3] thenApply vs thenCompose");
 
@@ -197,7 +76,15 @@ public final class Mod009CompletableFuture {
         System.out.println("  flat = " + flat.join());
     }
 
-    // --- Section 4: combining ---
+    /*
+    Combining
+
+    - thenCombine(other, BiFunction) waits for both futures and combines their results. Like zip.
+    - allOf(f1, f2, ...) returns CompletableFuture<Void> that completes when all inputs do. Read each individual
+      f.join() afterwards to get the values.
+    - anyOf(...) completes when the first input does, with that input's value.
+    - applyToEither(other, fn) is the typed equivalent of anyOf for two futures of the same type.
+    */
     static void combining() {
         System.out.println("[Section 4] combining");
 
@@ -221,7 +108,19 @@ public final class Mod009CompletableFuture {
         System.out.println("  applyToEither: " + fast.applyToEither(slow, x -> x).join());
     }
 
-    // --- Section 5: error handling ---
+    /*
+    Error handling
+
+    - exceptionally(Function<Throwable, T>) recovers from a failure by producing a fallback value of the same type.
+      Subsequent stages do not see the failure.
+    - handle(BiFunction<T, Throwable, U>) runs in either case (success or failure) and lets you decide what to
+      produce.
+    - whenComplete(BiConsumer<T, Throwable>) is the listener form — it cannot change the value; useful for logging or
+      metric emission.
+    - An unhandled exception inside any stage propagates downstream wrapped in a CompletionException. Calling get()
+      then throws ExecutionException; calling join() throws CompletionException (unchecked) — the latter is more
+      pleasant for chaining.
+    */
     static void errorHandling() {
         System.out.println("[Section 5] error handling");
 
@@ -248,7 +147,15 @@ public final class Mod009CompletableFuture {
         }
     }
 
-    // --- Section 6: timeouts ---
+    /*
+    Timeouts
+
+    - orTimeout(t, unit) (Java 9+) completes the future exceptionally with TimeoutException if it has not finished in
+      time.
+    - completeOnTimeout(value, t, unit) completes successfully with a fallback value instead.
+    - Pre-Java 9 you had to wire your own timer via a ScheduledExecutorService — the applyToEither + scheduler trick.
+      Today, prefer the built-ins.
+    */
     static void timeouts() {
         System.out.println("[Section 6] timeouts");
 
@@ -264,7 +171,13 @@ public final class Mod009CompletableFuture {
         System.out.println("  " + slow2.join());
     }
 
-    // --- Section 7: retry with exponential backoff ---
+    /*
+    Retry with exponential backoff
+
+    - A common real-world need: retry an idempotent failing call a few times, doubling the delay between attempts.
+    - The pattern: call the supplier; on exceptionally, schedule the next attempt on a ScheduledExecutorService and
+      thenCompose to its result. Recurse until attempts are exhausted, then propagate the last failure.
+    */
     static void retryWithBackoff() {
         System.out.println("[Section 7] retry with exponential backoff");
 
@@ -299,7 +212,15 @@ public final class Mod009CompletableFuture {
                 .thenCompose(x -> x);
     }
 
-    // --- Section 8: real-world fan-out (dashboard) ---
+    /*
+    Real-world fan-out
+
+    - Frontend dashboards typically call several services in parallel and combine the answers. The natural shape is
+      supplyAsync per service, then either thenCombine for two of them or allOf + f.join() for many.
+    - Bonus: pin all stages to a dedicated Executor so a slow downstream cannot contend with the common pool.
+    - Caveat: CompletableFuture does NOT propagate cancellation. Cancelling one sibling does not stop the others.
+      Mod012 (StructuredTaskScope) is the modern fix.
+    */
     static void dashboardFanOut() {
         System.out.println("[Section 8] dashboard fan-out");
 
@@ -319,7 +240,18 @@ public final class Mod009CompletableFuture {
                 + ((System.nanoTime() - t0) / 1_000_000) + " ms (≈ slowest branch)");
     }
 
-    // --- Section 9: cancellation does NOT propagate ---
+    /*
+    Limitations and forward-link to structured concurrency
+
+    - cancel(true) on a CompletableFuture only marks the future as cancelled — the running task is not interrupted,
+      and pending parallel siblings continue.
+    - A failure in one branch of a fan-out does not cancel the rest, so you keep paying for work whose result you
+      will discard.
+    - Chaining is opaque to thread dumps: a stage running on a common-pool worker does not show the call site that
+      scheduled it.
+    - For coordinated fan-out with all-or-nothing semantics, prefer StructuredTaskScope (Mod012). Use
+      CompletableFuture for async-event plumbing (UI callbacks, message buses) where there is no natural parent task.
+    */
     static void cancellationDoesNotPropagate() {
         System.out.println("[Section 9] cancellation does NOT propagate");
 

@@ -1,7 +1,7 @@
-package pl.training.modules.M03_ModuleDeclaration.zoo.guest_bad.zoo.guest_bad;
+package zoo.guest_bad;
 
 // THIS IMPORT MUST FAIL: `zoo.animal.talks.content` is exported only to zoo.staff.
-import pl.training.modules.M03_ModuleDeclaration.zoo.animal.talks.zoo.animal.talks.content.Script;
+import zoo.animal.talks.content.Script;
 
 public class BadApp {
     public static void main(String... args) {

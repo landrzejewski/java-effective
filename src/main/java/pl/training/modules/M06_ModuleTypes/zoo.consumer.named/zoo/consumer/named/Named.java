@@ -1,6 +1,6 @@
-package pl.training.modules.M06_ModuleTypes.zoo.consumer.named.zoo.consumer.named;
+package zoo.consumer.named;
 
-import pl.training.modules.M06_ModuleTypes.zoo.legacy.zoo.legacy.LegacyHelper;
+import zoo.legacy.LegacyHelper;
 
 public class Named {
     public static void main(String... args) {

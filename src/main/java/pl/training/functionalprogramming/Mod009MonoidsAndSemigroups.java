@@ -8,120 +8,6 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-// =================================================================================================
-// Section 1: Semigroup<A>
-// =================================================================================================
-
-/*
-## Semigroup<A>
-
-A `Semigroup<A>` is a type with one operation:
-
-```
-A combine(A a, A b);    // associative
-```
-
-**Associativity** means `combine(a, combine(b, c)) == combine(combine(a, b), c)`.
-That is the only law.
-
-Why care? Associativity lets you fold a list left-to-right or
-right-to-left or in chunks (parallel) and get the same answer. Most
-"summing" operations in business code are semigroups: max, min, string
-concat, list concat, set union, sum, product.
-*/
-
-// =================================================================================================
-// Section 2: Monoid<A>
-// =================================================================================================
-
-/*
-## Monoid<A>
-
-`Monoid<A>` is a `Semigroup<A>` with an *identity* element:
-
-```
-A empty();
-A combine(A a, A b);
-```
-
-**Identity** means `combine(empty, x) == x == combine(x, empty)`.
-
-| Type            | empty                  | combine                 |
-|-----------------|------------------------|-------------------------|
-| `Long` (sum)    | 0L                     | a + b                   |
-| `Long` (product)| 1L                     | a * b                   |
-| `String`        | ""                     | a + b                   |
-| `List<A>`       | empty list             | concatenation           |
-| `Set<A>`        | empty set              | union                   |
-| `Boolean` AND   | true                   | a && b                  |
-| `Boolean` OR    | false                  | a `||` b                |
-| `Long` (max)    | Long.MIN_VALUE         | Math.max(a, b)          |
-*/
-
-// =================================================================================================
-// Section 3: Why the identity matters
-// =================================================================================================
-
-/*
-## Why the identity matters
-
-- **Empty input has a defined answer.** Folding an empty list returns
-  `empty()`. Without an identity you would have to handle the empty case
-  separately.
-- **Parallel folds need the identity.** Each chunk seeds its accumulator
-  with `empty()` and combines on the way up; the identity ensures the
-  initial accumulator does not change the result.
-- **Composing folds.** A monoid `(A, A')` of pairs needs identities of
-  both components to seed itself.
-*/
-
-// =================================================================================================
-// Section 4: foldMap
-// =================================================================================================
-
-/*
-## foldMap
-
-`foldMap(fn, monoid, items)` is the canonical monoid-fold:
-
-```
-foldMap(fn, M, xs) = xs.fold(M.empty, (acc, x) -> M.combine(acc, fn(x)))
-```
-
-Read it as "**map** each element to a monoid value, then **fold** them
-all together". Every aggregation built on top of a monoid is a foldMap.
-*/
-
-// =================================================================================================
-// Section 5: Composition — pair-monoid and map-monoid
-// =================================================================================================
-
-/*
-## Composition — pair-monoid and map-monoid
-
-Monoids compose:
-
-- A pair `(A, B)` is a monoid when `A` and `B` are. Identity is
-  `(emptyA, emptyB)`; combine is element-wise.
-- A `Map<K, V>` is a monoid when `V` is. Combine merges keys; for
-  conflicts, combine the values with `V`'s monoid.
-
-This composition is what lets you compute *several* aggregates in one
-pass — the topic of §6.
-*/
-
-// =================================================================================================
-// Section 6: End-to-end — multi-aggregate over 10k orders
-// =================================================================================================
-
-/*
-## End-to-end — multi-aggregate over 10k orders
-
-Aggregate (count, totalAmount, maxAmount) over 10 000 orders in a
-single fold using a tuple-monoid. Compare against three independent
-imperative loops.
-*/
-
 public final class Mod009MonoidsAndSemigroups {
 
     private Mod009MonoidsAndSemigroups() {}
@@ -244,6 +130,19 @@ public final class Mod009MonoidsAndSemigroups {
     // Sections
     // =================================================================================================
 
+    /*
+    Semigroup<A>
+
+    A Semigroup<A> is a type with one operation:
+
+    A combine(A a, A b);    // associative
+
+    Associativity means combine(a, combine(b, c)) == combine(combine(a, b), c). That is the only law.
+
+    Why care? Associativity lets you fold a list left-to-right or right-to-left or in chunks (parallel) and get the
+    same answer. Most "summing" operations in business code are semigroups: max, min, string concat, list concat,
+    set union, sum, product.
+    */
     static void semigroupBasics() {
         System.out.println("[Section 1] Semigroup");
         // Associativity check on +
@@ -251,6 +150,27 @@ public final class Mod009MonoidsAndSemigroups {
         System.out.println("  (2+3)+5 == 2+(3+5)? " + ((a + b) + c == a + (b + c)));
     }
 
+    /*
+    Monoid<A>
+
+    Monoid<A> is a Semigroup<A> with an identity element:
+
+    A empty();
+    A combine(A a, A b);
+
+    Identity means combine(empty, x) == x == combine(x, empty).
+
+      Type             empty                   combine
+      ---------------- ----------------------- ------------------------
+      Long (sum)       0L                      a + b
+      Long (product)   1L                      a * b
+      String           ""                      a + b
+      List<A>          empty list              concatenation
+      Set<A>           empty set               union
+      Boolean AND      true                    a && b
+      Boolean OR       false                   a || b
+      Long (max)       Long.MIN_VALUE          Math.max(a, b)
+    */
     static void monoidStock() {
         System.out.println("[Section 2] stock monoids");
         System.out.println("  SUM.empty   = " + SUM.empty());
@@ -259,12 +179,31 @@ public final class Mod009MonoidsAndSemigroups {
         System.out.println("  STRING      = " + STRING.combine("ab", "cd"));
     }
 
+    /*
+    Why the identity matters
+
+    - Empty input has a defined answer. Folding an empty list returns empty(). Without an identity you would have
+      to handle the empty case separately.
+    - Parallel folds need the identity. Each chunk seeds its accumulator with empty() and combines on the way up;
+      the identity ensures the initial accumulator does not change the result.
+    - Composing folds. A monoid (A, A') of pairs needs identities of both components to seed itself.
+    */
     static void identityMatters() {
         System.out.println("[Section 3] identity matters");
         long emptySum = foldMap(x -> 1L, SUM, List.<Integer>of());
         System.out.println("  foldMap over empty list (count) = " + emptySum + " (uses identity)");
     }
 
+    /*
+    foldMap
+
+    foldMap(fn, monoid, items) is the canonical monoid-fold:
+
+    foldMap(fn, M, xs) = xs.fold(M.empty, (acc, x) -> M.combine(acc, fn(x)))
+
+    Read it as "map each element to a monoid value, then fold them all together". Every aggregation built on top of
+    a monoid is a foldMap.
+    */
     static void foldMapDemo() {
         System.out.println("[Section 4] foldMap");
         var nums = List.of(1, 2, 3, 4, 5);
@@ -273,6 +212,16 @@ public final class Mod009MonoidsAndSemigroups {
         System.out.println("  sum  = " + sum + ", product = " + prod);
     }
 
+    /*
+    Composition — pair-monoid and map-monoid
+
+    Monoids compose:
+
+    - A pair (A, B) is a monoid when A and B are. Identity is (emptyA, emptyB); combine is element-wise.
+    - A Map<K, V> is a monoid when V is. Combine merges keys; for conflicts, combine the values with V's monoid.
+
+    This composition is what lets you compute several aggregates in one pass — the topic of §6.
+    */
     static void pairAndMapMonoids() {
         System.out.println("[Section 5] pair and map monoids");
         var sumAndProduct = pairMonoid(SUM, PRODUCT);
@@ -286,6 +235,12 @@ public final class Mod009MonoidsAndSemigroups {
         System.out.println("  letter histogram          = " + hist);
     }
 
+    /*
+    End-to-end — multi-aggregate over 10k orders
+
+    Aggregate (count, totalAmount, maxAmount) over 10 000 orders in a single fold using a tuple-monoid. Compare
+    against three independent imperative loops.
+    */
     static void endToEnd() {
         System.out.println("[Section 6] end-to-end — multi-aggregate over 10k orders");
 

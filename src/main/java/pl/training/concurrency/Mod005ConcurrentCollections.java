@@ -16,161 +16,24 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
 
-// =================================================================================================
-// Section 1: Why Collections.synchronizedMap is not enough
-// =================================================================================================
-
-/*
-## Why Collections.synchronizedMap is not enough
-
-- `Collections.synchronizedMap(...)` wraps a map so that every individual method
-acquires a single global lock. Each method call is atomic in isolation.
-- It does NOT make compound operations atomic. Reading a value and then writing a
-new one based on it is two method calls, and another thread can sneak in between
-them. The classic bug: `if (!m.containsKey(k)) m.put(k, v);` — both threads pass
-the check, both put, only the second `put` survives.
-- Iteration is similarly broken: the wrapper synchronizes each `next()` call, but
-two `next()`s on different threads can interleave with mutations and throw
-`ConcurrentModificationException`. The Javadoc tells you to externally
-synchronize the *whole* iteration — at which point you have written your own
-critical section.
-- Use `ConcurrentHashMap` instead — it provides atomic compound operations
-(`compute`, `merge`, `computeIfAbsent`) and weakly consistent iterators that do
-not throw under concurrent modification.
-*/
-
-// =================================================================================================
-// Section 2: ConcurrentHashMap
-// =================================================================================================
-
-/*
-## ConcurrentHashMap
-
-- Designed for high-concurrency reads and writes. Reads are lock-free; writes lock
-only a small portion of the internal table.
-- The atomic compound operations are the killer feature:
-  - `compute(key, (k, v) -> ...)` — atomically replace the value with the result
-    of the lambda. The lambda must be short and side-effect-free.
-  - `computeIfAbsent(key, k -> ...)` — atomically insert if missing. Perfect for
-    memoization caches.
-  - `merge(key, value, (oldV, newV) -> ...)` — atomic update or insert. The
-    canonical "increment a per-key counter" pattern.
-- Bulk operations (`forEachEntry`, `search`, `reduce`) take a *parallelism
-threshold* — below it the operation runs sequentially; above it the map splits
-its internal table across the common ForkJoinPool.
-- `null` keys and `null` values are forbidden — they would be ambiguous with
-"not present" in concurrent semantics.
-*/
-
-// =================================================================================================
-// Section 3: CopyOnWriteArrayList
-// =================================================================================================
-
-/*
-## CopyOnWriteArrayList
-
-- Every mutation (`add`, `remove`, `set`) allocates a fresh array; readers see the
-old immutable snapshot. The result is lock-free reads and atomic publishing.
-- Best for collections that are read often and written rarely: listener
-registries, configuration sets, observer chains.
-- Iteration is cheap and never throws — the iterator wraps the snapshot taken at
-its creation. A modification mid-iteration is simply not visible until the next
-iterator is created.
-- Quadratic for write-heavy workloads (each write copies the entire array).
-*/
-
-// =================================================================================================
-// Section 4: BlockingQueue family
-// =================================================================================================
-
-/*
-## BlockingQueue family
-
-- A `BlockingQueue<E>` adds blocking semantics to a queue: `put` blocks while the
-queue is full, `take` blocks while it is empty. This makes producer–consumer code
-trivial — no manual `wait/notify`, no `Condition`s.
-- Three method styles:
-  - **Throw on failure**: `add`, `remove`, `element` — throw if full/empty.
-  - **Special return**: `offer`, `poll`, `peek` — return `false`/`null`.
-  - **Block / time out**: `put`, `take`, and `offer(e, t, u)` / `poll(t, u)`.
-- Implementations:
-  - `ArrayBlockingQueue(capacity)` — fixed-size array, optionally fair.
-  - `LinkedBlockingQueue([capacity])` — linked-list, optionally bounded; faster
-    on multiprocessors because head and tail can be locked separately.
-  - `SynchronousQueue` — zero capacity. Every `put` waits for a matching `take`
-    and vice versa. Used for direct hand-offs (e.g., `newCachedThreadPool`).
-  - `PriorityBlockingQueue` — unbounded, ordered by `Comparator`. Useful for
-    job queues with priorities.
-*/
-
-// =================================================================================================
-// Section 5: Producer–consumer with BlockingQueue
-// =================================================================================================
-
-/*
-## Producer–consumer with BlockingQueue
-
-- Compare to `Mod003`/`Mod004`: the queue subsumes both the locking and the
-condition signalling. The producer just calls `put`, the consumer just calls
-`take`, and back-pressure is handled automatically because `put` blocks.
-- Most modern producer–consumer code in Java is written this way. Reach for
-explicit locks or `wait/notify` only when the queue API does not fit.
-*/
-
-// =================================================================================================
-// Section 6: ConcurrentLinkedQueue / ConcurrentLinkedDeque
-// =================================================================================================
-
-/*
-## ConcurrentLinkedQueue / ConcurrentLinkedDeque
-
-- Lock-free, unbounded, **non-blocking**. `offer`/`poll` always return immediately.
-- Use when you do not want producers ever to block (e.g., logging, event bus).
-The price is unbounded growth — combine with monitoring or a separate drain
-thread, otherwise a slow consumer becomes a memory leak.
-- `size()` is O(n) and only weakly consistent — do not use it in tight loops.
-*/
-
-// =================================================================================================
-// Section 7: ConcurrentSkipListMap / ConcurrentSkipListSet
-// =================================================================================================
-
-/*
-## ConcurrentSkipListMap / ConcurrentSkipListSet
-
-- A concurrent `NavigableMap` (`SortedMap`) — keys are kept in their natural
-ordering or by an explicit `Comparator`.
-- Operations are O(log n) and lock-free (skip list with CAS). Useful for
-leaderboards, time-series buckets, range queries — anywhere you need both
-concurrency and ordered traversal.
-- Iterators are weakly consistent. `firstKey`, `lastKey`, `headMap`, `tailMap`,
-`subMap`, `descendingMap` all work concurrently.
-*/
-
-// =================================================================================================
-// Section 8: Iteration semantics
-// =================================================================================================
-
-/*
-## Iteration semantics
-
-- The legacy collections (`HashMap`, `ArrayList`, `Collections.synchronizedMap`,
-etc.) use **fail-fast** iterators: any structural modification during iteration
-throws `ConcurrentModificationException`.
-- `java.util.concurrent` collections use **weakly consistent** iterators:
-  - They never throw `ConcurrentModificationException`.
-  - They reflect the state at, or after, iterator construction; they may, but
-    are not required to, reflect modifications made after construction.
-  - They traverse each element exactly once.
-- The trade-off: weakly consistent iteration cannot give you a precise snapshot,
-but it lets reads and mutations proceed in parallel without copy-on-write costs.
-*/
-
 public final class Mod005ConcurrentCollections {
 
     private Mod005ConcurrentCollections() {}
 
-    // --- Section 1: synchronizedMap is not enough ---
+    /*
+    Why Collections.synchronizedMap is not enough
+
+    - Collections.synchronizedMap(...) wraps a map so that every individual method acquires a single global lock. Each
+      method call is atomic in isolation.
+    - It does NOT make compound operations atomic. Reading a value and then writing a new one based on it is two
+      method calls, and another thread can sneak in between them. The classic bug:
+      if (!m.containsKey(k)) m.put(k, v); — both threads pass the check, both put, only the second put survives.
+    - Iteration is similarly broken: the wrapper synchronizes each next() call, but two next()s on different threads
+      can interleave with mutations and throw ConcurrentModificationException. The Javadoc tells you to externally
+      synchronize the whole iteration — at which point you have written your own critical section.
+    - Use ConcurrentHashMap instead — it provides atomic compound operations (compute, merge, computeIfAbsent) and
+      weakly consistent iterators that do not throw under concurrent modification.
+    */
     static void synchronizedMapIsNotEnough() throws InterruptedException {
         System.out.println("[Section 1] synchronizedMap vs ConcurrentHashMap");
 
@@ -196,7 +59,21 @@ public final class Mod005ConcurrentCollections {
         System.out.println("  ConcurrentHashMap.compute    → " + chm.get("hits"));
     }
 
-    // --- Section 2: per-URL hit counter via merge + bulk ops ---
+    /*
+    ConcurrentHashMap
+
+    - Designed for high-concurrency reads and writes. Reads are lock-free; writes lock only a small portion of the
+      internal table.
+    - The atomic compound operations are the killer feature:
+      - compute(key, (k, v) -> ...) — atomically replace the value with the result of the lambda. The lambda must be
+        short and side-effect-free.
+      - computeIfAbsent(key, k -> ...) — atomically insert if missing. Perfect for memoization caches.
+      - merge(key, value, (oldV, newV) -> ...) — atomic update or insert. The canonical "increment a per-key counter"
+        pattern.
+    - Bulk operations (forEachEntry, search, reduce) take a parallelism threshold — below it the operation runs
+      sequentially; above it the map splits its internal table across the common ForkJoinPool.
+    - null keys and null values are forbidden — they would be ambiguous with "not present" in concurrent semantics.
+    */
     static void hitCounterAndBulkOps() throws InterruptedException {
         System.out.println("[Section 2] ConcurrentHashMap merge + bulk ops");
 
@@ -224,7 +101,17 @@ public final class Mod005ConcurrentCollections {
         System.out.println("  topish entry observed = " + topRef.get()); // weak under contention but illustrative
     }
 
-    // --- Section 3: CopyOnWriteArrayList event bus ---
+    /*
+    CopyOnWriteArrayList
+
+    - Every mutation (add, remove, set) allocates a fresh array; readers see the old immutable snapshot. The result is
+      lock-free reads and atomic publishing.
+    - Best for collections that are read often and written rarely: listener registries, configuration sets, observer
+      chains.
+    - Iteration is cheap and never throws — the iterator wraps the snapshot taken at its creation. A modification
+      mid-iteration is simply not visible until the next iterator is created.
+    - Quadratic for write-heavy workloads (each write copies the entire array).
+    */
     static void copyOnWriteEventBus() throws InterruptedException {
         System.out.println("[Section 3] CopyOnWriteArrayList event bus");
 
@@ -250,7 +137,23 @@ public final class Mod005ConcurrentCollections {
         System.out.println("  next dispatch will see " + listeners.size() + " listeners");
     }
 
-    // --- Section 4: BlockingQueue family ---
+    /*
+    BlockingQueue family
+
+    - A BlockingQueue<E> adds blocking semantics to a queue: put blocks while the queue is full, take blocks while it
+      is empty. This makes producer–consumer code trivial — no manual wait/notify, no Conditions.
+    - Three method styles:
+      - Throw on failure: add, remove, element — throw if full/empty.
+      - Special return: offer, poll, peek — return false/null.
+      - Block / time out: put, take, and offer(e, t, u) / poll(t, u).
+    - Implementations:
+      - ArrayBlockingQueue(capacity) — fixed-size array, optionally fair.
+      - LinkedBlockingQueue([capacity]) — linked-list, optionally bounded; faster on multiprocessors because head and
+        tail can be locked separately.
+      - SynchronousQueue — zero capacity. Every put waits for a matching take and vice versa. Used for direct
+        hand-offs (e.g., newCachedThreadPool).
+      - PriorityBlockingQueue — unbounded, ordered by Comparator. Useful for job queues with priorities.
+    */
     static void blockingQueueFamily() throws InterruptedException {
         System.out.println("[Section 4] BlockingQueue family");
 
@@ -278,7 +181,14 @@ public final class Mod005ConcurrentCollections {
         consumer.join();
     }
 
-    // --- Section 5: producer–consumer rewritten with LinkedBlockingQueue ---
+    /*
+    Producer–consumer with BlockingQueue
+
+    - Compare to Mod003/Mod004: the queue subsumes both the locking and the condition signalling. The producer just
+      calls put, the consumer just calls take, and back-pressure is handled automatically because put blocks.
+    - Most modern producer–consumer code in Java is written this way. Reach for explicit locks or wait/notify only
+      when the queue API does not fit.
+    */
     static void producerConsumerWithBlockingQueue() throws InterruptedException {
         System.out.println("[Section 5] producer–consumer with LinkedBlockingQueue");
 
@@ -303,7 +213,14 @@ public final class Mod005ConcurrentCollections {
         consumer.join();
     }
 
-    // --- Section 6: ConcurrentLinkedQueue ---
+    /*
+    ConcurrentLinkedQueue / ConcurrentLinkedDeque
+
+    - Lock-free, unbounded, non-blocking. offer/poll always return immediately.
+    - Use when you do not want producers ever to block (e.g., logging, event bus). The price is unbounded growth —
+      combine with monitoring or a separate drain thread, otherwise a slow consumer becomes a memory leak.
+    - size() is O(n) and only weakly consistent — do not use it in tight loops.
+    */
     static void concurrentLinkedQueue() throws InterruptedException {
         System.out.println("[Section 6] ConcurrentLinkedQueue");
 
@@ -315,7 +232,15 @@ public final class Mod005ConcurrentCollections {
         System.out.println("  inbox holds " + inbox.size() + " messages (no blocking ever)");
     }
 
-    // --- Section 7: ConcurrentSkipListMap leaderboard ---
+    /*
+    ConcurrentSkipListMap / ConcurrentSkipListSet
+
+    - A concurrent NavigableMap (SortedMap) — keys are kept in their natural ordering or by an explicit Comparator.
+    - Operations are O(log n) and lock-free (skip list with CAS). Useful for leaderboards, time-series buckets, range
+      queries — anywhere you need both concurrency and ordered traversal.
+    - Iterators are weakly consistent. firstKey, lastKey, headMap, tailMap, subMap, descendingMap all work
+      concurrently.
+    */
     static void concurrentSkipListMap() throws InterruptedException {
         System.out.println("[Section 7] ConcurrentSkipListMap");
 
@@ -336,7 +261,19 @@ public final class Mod005ConcurrentCollections {
                 .forEach(e -> System.out.println("    score=" + (-e.getKey()) + " by " + e.getValue()));
     }
 
-    // --- Section 8: iteration semantics ---
+    /*
+    Iteration semantics
+
+    - The legacy collections (HashMap, ArrayList, Collections.synchronizedMap, etc.) use fail-fast iterators: any
+      structural modification during iteration throws ConcurrentModificationException.
+    - java.util.concurrent collections use weakly consistent iterators:
+      - They never throw ConcurrentModificationException.
+      - They reflect the state at, or after, iterator construction; they may, but are not required to, reflect
+        modifications made after construction.
+      - They traverse each element exactly once.
+    - The trade-off: weakly consistent iteration cannot give you a precise snapshot, but it lets reads and mutations
+      proceed in parallel without copy-on-write costs.
+    */
     static void iterationSemantics() throws InterruptedException {
         System.out.println("[Section 8] iteration semantics");
 

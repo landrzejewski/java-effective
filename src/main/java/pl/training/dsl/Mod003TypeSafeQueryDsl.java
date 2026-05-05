@@ -9,105 +9,16 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-// =================================================================================================
-// Section 1: Why typed query DSLs
-// =================================================================================================
-
 /*
-## Why typed query DSLs
+Why typed query DSLs
 
-- String-concatenated SQL silently allows
-  `WHERE customer_id = 'alice' AND amount = 'large'` even when both
-  columns are typed (`int` vs. `string`). The driver finds out at runtime,
-  the user gets an ugly stack trace.
-- A typed DSL surfaces the type of each column as a Java generic and
-  refuses to compile a comparison between two incompatible types.
-- Pay-off scales with project size: the bigger the schema, the more value
-  the DSL adds — typing once in the table definition replaces hundreds of
-  hand-written queries that all need to stay in sync with the schema.
-- This module is jOOQ-light: the same patterns, much smaller surface, no
-  external dependencies.
-*/
-
-// =================================================================================================
-// Section 2: Tables and columns as values
-// =================================================================================================
-
-/*
-## Tables and columns as values
-
-- A `Column<T>` carries the column's name, the table it belongs to, and a
-phantom type `T` corresponding to its SQL value type.
-- An `accessor` function maps a domain row (`Order`) to the column's value
-— the same function powers in-memory execution (see §6) and could be
-replaced by a JDBC `ResultSet` getter in a real driver.
-- The table is a record holding its name and the list of columns. In a
-real DSL the column list would be code-generated from a schema dump.
-*/
-
-// =================================================================================================
-// Section 3: The fluent chain — restricted by stage
-// =================================================================================================
-
-/*
-## The fluent chain — restricted by stage
-
-- `select(c1, c2).from(table).where(predicate)` is implemented with three
-distinct types: `SelectStage`, `FromStage`, `WhereStage`. Each stage's
-public methods only allow what is legal next.
-- `select` returns `SelectStage`; only `SelectStage.from(...)` exists, so
-the chain has nowhere else to go.
-- This is the "type-state" trick covered in depth in Mod008. Here it is
-used lightly to enforce that `where` cannot precede `from` and `from`
-cannot precede `select`.
-*/
-
-// =================================================================================================
-// Section 4: Predicate composition
-// =================================================================================================
-
-/*
-## Predicate composition
-
-- A `Cond` is the Java mirror of a SQL boolean expression: each value
-remembers its SQL fragment plus its bind parameters.
-- Column-level helpers (`col.eq(v)`, `col.gt(v)`, `col.like(pattern)`) are
-strongly typed — `col` of type `Column<String>` rejects `col.eq(42)` at
-compile time.
-- `Cond.and(other)` and `Cond.or(other)` combine atomic conditions and
-keep the bind parameters in lock-step with the placeholders.
-*/
-
-// =================================================================================================
-// Section 5: Producing the SQL
-// =================================================================================================
-
-/*
-## Producing the SQL
-
-- The query is a small AST: list of selected columns, source table,
-optional `Cond`. `toSql()` walks the tree and emits a parameterised SQL
-string + the list of binds.
-- The DSL never concatenates user data into the SQL; binds are always
-positional `?` markers.
-- The reference SQL produced for the demo query is checked against an
-expected string at runtime — a self-test.
-*/
-
-// =================================================================================================
-// Section 6: Executing in-memory
-// =================================================================================================
-
-/*
-## Executing in-memory
-
-- `Query.execute(rows)` filters and projects an in-memory `List<Row>` the
-same way a JDBC driver would. The accessor functions on each `Column<T>`
-do the heavy lifting.
-- Verifies that the DSL's *semantics* (what rows / columns the user
-expects) match the SQL produced.
-- A real DSL would also have a `.fetch(connection)` that runs against a
-JDBC `Connection`. The interpretation step is otherwise identical.
+- String-concatenated SQL silently allows WHERE customer_id = 'alice' AND amount = 'large' even when both columns
+  are typed (int vs. string). The driver finds out at runtime, the user gets an ugly stack trace.
+- A typed DSL surfaces the type of each column as a Java generic and refuses to compile a comparison between two
+  incompatible types.
+- Pay-off scales with project size: the bigger the schema, the more value the DSL adds — typing once in the table
+  definition replaces hundreds of hand-written queries that all need to stay in sync with the schema.
+- This module is jOOQ-light: the same patterns, much smaller surface, no external dependencies.
 */
 
 public final class Mod003TypeSafeQueryDsl {
@@ -284,14 +195,31 @@ public final class Mod003TypeSafeQueryDsl {
     // Sections wired into main
     // =================================================================================================
 
-    // --- Section 2: tables and columns
+    /*
+    Tables and columns as values
+
+    - A Column<T> carries the column's name, the table it belongs to, and a phantom type T corresponding to its SQL
+      value type.
+    - An accessor function maps a domain row (Order) to the column's value — the same function powers in-memory
+      execution (see §6) and could be replaced by a JDBC ResultSet getter in a real driver.
+    - The table is a record holding its name and the list of columns. In a real DSL the column list would be
+      code-generated from a schema dump.
+    */
     static void tablesAndColumns() {
         System.out.println("[Section 2] tables and columns");
         System.out.println("  ORDERS columns = " + ORDERS.columns.stream().map(Column::qualified).toList());
         System.out.println("  CUSTOMER type carrier = " + CUSTOMER.qualified() + " : Column<String>");
     }
 
-    // --- Section 3: the fluent chain
+    /*
+    The fluent chain — restricted by stage
+
+    - select(c1, c2).from(table).where(predicate) is implemented with three distinct types: SelectStage, FromStage,
+      WhereStage. Each stage's public methods only allow what is legal next.
+    - select returns SelectStage; only SelectStage.from(...) exists, so the chain has nowhere else to go.
+    - This is the "type-state" trick covered in depth in Mod008. Here it is used lightly to enforce that where
+      cannot precede from and from cannot precede select.
+    */
     static void fluentChain() {
         System.out.println("[Section 3] fluent chain — types restrict the next step");
 
@@ -308,7 +236,16 @@ public final class Mod003TypeSafeQueryDsl {
         //   select(ID).from(ORDERS).where(ID.eq("x"));  // wrong type for ID column
     }
 
-    // --- Section 4: predicate composition with mixed types
+    /*
+    Predicate composition
+
+    - A Cond is the Java mirror of a SQL boolean expression: each value remembers its SQL fragment plus its bind
+      parameters.
+    - Column-level helpers (col.eq(v), col.gt(v), col.like(pattern)) are strongly typed — col of type Column<String>
+      rejects col.eq(42) at compile time.
+    - Cond.and(other) and Cond.or(other) combine atomic conditions and keep the bind parameters in lock-step with
+      the placeholders.
+    */
     static void predicateComposition() {
         System.out.println("[Section 4] predicate composition");
 
@@ -318,7 +255,14 @@ public final class Mod003TypeSafeQueryDsl {
         System.out.println("  cond.binds = " + cond.binds);
     }
 
-    // --- Section 5: producing SQL with a self-test against expected output
+    /*
+    Producing the SQL
+
+    - The query is a small AST: list of selected columns, source table, optional Cond. toSql() walks the tree and
+      emits a parameterised SQL string + the list of binds.
+    - The DSL never concatenates user data into the SQL; binds are always positional ? markers.
+    - The reference SQL produced for the demo query is checked against an expected string at runtime — a self-test.
+    */
     static void producingSql() {
         System.out.println("[Section 5] producing SQL — self-test");
 
@@ -336,7 +280,15 @@ public final class Mod003TypeSafeQueryDsl {
         System.out.println("  binds matches actual?    " + sb.binds().equals(expectedBinds));
     }
 
-    // --- Section 6: in-memory execution
+    /*
+    Executing in-memory
+
+    - Query.execute(rows) filters and projects an in-memory List<Row> the same way a JDBC driver would. The accessor
+      functions on each Column<T> do the heavy lifting.
+    - Verifies that the DSL's semantics (what rows / columns the user expects) match the SQL produced.
+    - A real DSL would also have a .fetch(connection) that runs against a JDBC Connection. The interpretation step
+      is otherwise identical.
+    */
     static void inMemoryExecution() {
         System.out.println("[Section 6] in-memory execution against 5 rows");
 

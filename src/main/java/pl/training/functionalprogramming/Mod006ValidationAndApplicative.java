@@ -6,116 +6,6 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-// =================================================================================================
-// Section 1: Why Either is not enough
-// =================================================================================================
-
-/*
-## Why Either is not enough
-
-`Either<E, A>.flatMap` chains short-circuit on the first `Left`:
-
-```
-parseEmail(input)
-    .flatMap(email -> parsePassword(input))      // skipped if email failed
-    .flatMap(pw    -> parseAge(input))           // skipped if email or password failed
-```
-
-For form validation we usually want the *opposite* behaviour: try every
-field, collect every error, and only report success when all of them
-passed.
-
-That's `Validation<E, A>`: a parallel-style composition that accumulates
-errors instead of stopping at the first one.
-*/
-
-// =================================================================================================
-// Section 2: Validation<E, A>
-// =================================================================================================
-
-/*
-## Validation<E, A>
-
-```
-sealed interface Validation<E, A> permits Valid, Invalid {}
-record Valid<E, A>(A value) implements Validation<E, A> {}
-record Invalid<E, A>(List<E> errors) implements Validation<E, A> {}
-```
-
-- `Invalid` carries a *list* of errors, not a single one.
-- `valid(x)` and `invalid(error)` are the constructors.
-- `map(f)` runs only on `Valid`; on `Invalid` it returns the same errors.
-*/
-
-// =================================================================================================
-// Section 3: The applicative pattern — map2 / map3 / mapN
-// =================================================================================================
-
-/*
-## The applicative pattern — map2 / map3 / mapN
-
-The key combinator is **`map2`**:
-
-```
-Validation<E, A> a;
-Validation<E, B> b;
-BiFunction<A, B, R> combine;
-Validation<E, R> result = map2(a, b, combine);
-```
-
-Cases:
-- both `Valid` → `Valid(combine(a, b))`,
-- one `Invalid` → propagate its errors,
-- both `Invalid` → **concatenate** their error lists.
-
-`map3`/`map4`/`mapN` are built on top of `map2`. The pattern is called
-*applicative* because it lets you **apply** an N-argument function to N
-independent effectful values.
-*/
-
-// =================================================================================================
-// Section 4: Functor / Applicative / Monad — naming the abstractions
-// =================================================================================================
-
-/*
-## Functor / Applicative / Monad — naming the abstractions
-
-Three nested abstractions defined by the operations they support:
-
-- **Functor**: `map(F<A>, A->B) → F<B>`. "I can transform the inside."
-  Examples: `Option`, `Either`, `Try`, `Validation`, `List`, `Stream`.
-- **Applicative**: Functor + `pure(A) → F<A>` + `map2(F<A>, F<B>, ...)`.
-  "I can combine independent values." All examples above are applicatives.
-- **Monad**: Applicative + `flatMap(F<A>, A->F<B>) → F<B>`.
-  "I can chain dependent computations."
-
-`Validation` is an **applicative but not a monad**: a lawful `flatMap`
-would have to short-circuit on `Invalid` (because the next step depends
-on the previous value), losing the accumulation property. That's why
-applicative is the right level of abstraction for form validation.
-*/
-
-// =================================================================================================
-// Section 5: End-to-end form validation with assertions
-// =================================================================================================
-
-/*
-## End-to-end form validation with assertions
-
-Validate a `RegisterUserCommand(email, password, age)`:
-
-- email: non-blank + matches a tiny regex.
-- password: at least 8 characters.
-- age: between 0 and 120.
-
-Three probes:
-1. all three fields valid → `Valid`, 0 errors.
-2. one bad field (email) → `Invalid` with 1 error.
-3. two bad fields (email + age) → `Invalid` with 2 errors.
-
-The `main` checks the error count against the expected.
-*/
-
 public final class Mod006ValidationAndApplicative {
 
     private Mod006ValidationAndApplicative() {}
@@ -203,6 +93,21 @@ public final class Mod006ValidationAndApplicative {
     // Sections
     // =================================================================================================
 
+    /*
+    Why Either is not enough
+
+    Either<E, A>.flatMap chains short-circuit on the first Left:
+
+    parseEmail(input)
+        .flatMap(email -> parsePassword(input))      // skipped if email failed
+        .flatMap(pw    -> parseAge(input))           // skipped if email or password failed
+
+    For form validation we usually want the opposite behaviour: try every field, collect every error, and only
+    report success when all of them passed.
+
+    That's Validation<E, A>: a parallel-style composition that accumulates errors instead of stopping at the first
+    one.
+    */
     static void whyEitherIsNotEnough() {
         System.out.println("[Section 1] why Either is not enough");
         // Conceptual illustration with Validation built up step-by-step.
@@ -217,6 +122,17 @@ public final class Mod006ValidationAndApplicative {
         System.out.println("  Validation map2 will combine BOTH (next sections).");
     }
 
+    /*
+    Validation<E, A>
+
+    sealed interface Validation<E, A> permits Valid, Invalid {}
+    record Valid<E, A>(A value) implements Validation<E, A> {}
+    record Invalid<E, A>(List<E> errors) implements Validation<E, A> {}
+
+    - Invalid carries a list of errors, not a single one.
+    - valid(x) and invalid(error) are the constructors.
+    - map(f) runs only on Valid; on Invalid it returns the same errors.
+    */
     static void validationDemo() {
         System.out.println("[Section 2] Validation");
         System.out.println("  validateEmail(\"\")         = " + validateEmail(""));
@@ -224,6 +140,24 @@ public final class Mod006ValidationAndApplicative {
         System.out.println("  validateAge(-1)            = " + validateAge(-1));
     }
 
+    /*
+    The applicative pattern — map2 / map3 / mapN
+
+    The key combinator is map2:
+
+    Validation<E, A> a;
+    Validation<E, B> b;
+    BiFunction<A, B, R> combine;
+    Validation<E, R> result = map2(a, b, combine);
+
+    Cases:
+    - both Valid → Valid(combine(a, b)),
+    - one Invalid → propagate its errors,
+    - both Invalid → concatenate their error lists.
+
+    map3/map4/mapN are built on top of map2. The pattern is called applicative because it lets you apply an
+    N-argument function to N independent effectful values.
+    */
     static void applicativePattern() {
         System.out.println("[Section 3] applicative — map2 / map3");
         var ok    = Validation.valid("alice@example.com");
@@ -233,12 +167,43 @@ public final class Mod006ValidationAndApplicative {
         System.out.println("  all valid → " + combined);
     }
 
+    /*
+    Functor / Applicative / Monad — naming the abstractions
+
+    Three nested abstractions defined by the operations they support:
+
+    - Functor: map(F<A>, A->B) → F<B>. "I can transform the inside." Examples: Option, Either, Try, Validation,
+      List, Stream.
+    - Applicative: Functor + pure(A) → F<A> + map2(F<A>, F<B>, ...). "I can combine independent values." All
+      examples above are applicatives.
+    - Monad: Applicative + flatMap(F<A>, A->F<B>) → F<B>. "I can chain dependent computations."
+
+    Validation is an applicative but not a monad: a lawful flatMap would have to short-circuit on Invalid (because
+    the next step depends on the previous value), losing the accumulation property. That's why applicative is the
+    right level of abstraction for form validation.
+    */
     static void abstractionsHierarchy() {
         System.out.println("[Section 4] Functor / Applicative / Monad");
         System.out.println("  Validation is an Applicative but NOT a Monad");
         System.out.println("  (a monadic flatMap would short-circuit and lose accumulation)");
     }
 
+    /*
+    End-to-end form validation with assertions
+
+    Validate a RegisterUserCommand(email, password, age):
+
+    - email: non-blank + matches a tiny regex.
+    - password: at least 8 characters.
+    - age: between 0 and 120.
+
+    Three probes:
+    1. all three fields valid → Valid, 0 errors.
+    2. one bad field (email) → Invalid with 1 error.
+    3. two bad fields (email + age) → Invalid with 2 errors.
+
+    The main checks the error count against the expected.
+    */
     static void endToEnd() {
         System.out.println("[Section 5] form validation — assertions");
 

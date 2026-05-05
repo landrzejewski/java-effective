@@ -10,42 +10,18 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.StampedLock;
 
-// =================================================================================================
-// Section 1: ReentrantLock basics
-// =================================================================================================
-
 /*
-## ReentrantLock basics
+When NOT to use explicit locks
 
-- `ReentrantLock` is the explicit, library-level alternative to the `synchronized`
-keyword. The semantics are similar — same thread can re-enter, monitor-style
-mutual exclusion, happens-before on unlock — but the API is much richer.
-- The mandatory shape is `lock(); try { ... } finally { unlock(); }`. If you
-forget the `finally`, an exception in the critical section leaks the lock and
-every other thread blocks forever.
-- Pros over `synchronized`: timeout, interruptible acquisition, multiple condition
-queues per lock, fairness, and rich introspection (`getOwner`,
-`getQueuedThreads`, `getQueueLength`).
-- Cons: more verbose; failure to call `unlock` is silent; you cannot use
-`try-with-resources` directly. In practice, prefer `synchronized` for simple
-mutual exclusion and `ReentrantLock` only when you need a feature it provides.
-*/
+- For a thread-safe map: prefer ConcurrentHashMap (Mod005). The library already does fine-grained locking internally
+  and exposes atomic compound operations (compute, merge, computeIfAbsent).
+- For coordination of independent counters: prefer LongAdder / AtomicInteger (Mod002) — no lock at all.
+- For producer–consumer: prefer a BlockingQueue (Mod005). The queue subsumes the locking and the condition signalling.
+- For coordinating a fan-out of tasks: prefer StructuredTaskScope (Mod012). It makes cancellation and aggregation
+  explicit instead of hidden in a lock protocol.
 
-// =================================================================================================
-// Section 2: Multiple Conditions on one lock
-// =================================================================================================
-
-/*
-## Multiple Conditions on one lock
-
-- An intrinsic monitor has only one wait set; you must `notifyAll` and let waiters
-re-check their predicates. Under heavy load, this wakes too many threads.
-- `lock.newCondition()` creates a separate wait queue tied to the same lock. You
-can give producers and consumers their own conditions ("not full", "not empty"),
-and `signal` only the relevant side.
-- Same scaffold as `wait/notify`: `await()` releases the lock and parks; `signal()`
-or `signalAll()` wakes one or all waiters. Just like `wait`, awaits must be in a
-`while` loop because of spurious wakeups.
+A good rule of thumb: reach for an explicit lock only when no higher-level abstraction in java.util.concurrent covers
+the case. The library version is almost always faster and easier to reason about.
 */
 
 final class BoundedQueueWithConditions<T> {
@@ -77,80 +53,6 @@ final class BoundedQueueWithConditions<T> {
     }
 }
 
-// =================================================================================================
-// Section 3: tryLock and tryLock(timeout)
-// =================================================================================================
-
-/*
-## tryLock and tryLock(timeout)
-
-- `lock.tryLock()` attempts to acquire the lock and returns `true` on success or
-`false` immediately if it is held by someone else. Use it when you want a
-fallback path instead of blocking — for example, "skip this update if a snapshot
-is in progress".
-- `lock.tryLock(timeout, unit)` waits up to `timeout`. Returns false on timeout,
-throws `InterruptedException` if interrupted. This is the building block for
-deadlock-resistant code: acquire each lock with a small timeout and back off if
-both locks cannot be obtained.
-*/
-
-// =================================================================================================
-// Section 4: Fairness
-// =================================================================================================
-
-/*
-## Fairness
-
-- A *fair* lock grants the lock in FIFO order: the longest-waiting thread always
-wins. Construct one with `new ReentrantLock(true)`.
-- A *non-fair* lock (the default) lets a newly arriving thread "barge" past the
-queue if it happens to find the lock free. This is faster on average — barging
-keeps cores busy — but a thread can starve indefinitely under contention.
-- Use fairness when starvation is observable and the throughput cost is
-acceptable; use the default everywhere else.
-*/
-
-// =================================================================================================
-// Section 5: ReentrantReadWriteLock
-// =================================================================================================
-
-/*
-## ReentrantReadWriteLock
-
-- A read–write lock has two underlying locks: any number of threads can hold the
-read lock simultaneously, but the write lock is exclusive against both readers
-and other writers.
-- Best for read-heavy workloads. Under read-mostly traffic, readers run in
-parallel; under write-heavy traffic the read–write protocol adds overhead with
-no payoff.
-- Same `lock()/unlock()` shape, but you must take the right side: `readLock()` or
-`writeLock()`. A reader cannot upgrade to a writer atomically (you must release
-the read lock first), but a writer holding the write lock can downgrade by
-acquiring the read lock and then releasing the write lock.
-- The API is older than `StampedLock` and lacks optimistic reads — see §6.
-*/
-
-// =================================================================================================
-// Section 6: StampedLock and optimistic reads
-// =================================================================================================
-
-/*
-## StampedLock and optimistic reads
-
-- `StampedLock` (Java 8+) provides three modes: write, read, and **optimistic
-read**. Each lock/unlock returns a `long` *stamp* used to release or validate.
-- Optimistic read: call `tryOptimisticRead()`, snapshot the fields, then call
-`validate(stamp)`. If no writer has acquired the lock in between, your snapshot
-is consistent and you skipped the read-lock cost entirely. Otherwise you fall
-back to the conventional `readLock()`.
-- `StampedLock` is **not reentrant** and does not support `Condition`. Treat it
-as a high-performance specialist for read-mostly hot paths, not a drop-in
-replacement for `ReentrantReadWriteLock`.
-- `tryConvertToWriteLock(stamp)` lets you upgrade a read stamp to a write stamp
-without releasing first; it can return 0 if conversion is impossible, in which
-case you release and acquire the write lock conventionally.
-*/
-
 final class StampedCache {
     private final Map<String, Integer> map = new HashMap<>();
     private final StampedLock lock = new StampedLock();
@@ -173,33 +75,23 @@ final class StampedCache {
     }
 }
 
-// =================================================================================================
-// Section 7: When NOT to use explicit locks
-// =================================================================================================
-
-/*
-## When NOT to use explicit locks
-
-- For a thread-safe map: prefer `ConcurrentHashMap` (Mod005). The library already
-does fine-grained locking internally and exposes atomic compound operations
-(`compute`, `merge`, `computeIfAbsent`).
-- For coordination of independent counters: prefer `LongAdder` / `AtomicInteger`
-(Mod002) — no lock at all.
-- For producer–consumer: prefer a `BlockingQueue` (Mod005). The queue subsumes
-the locking and the condition signalling.
-- For coordinating a fan-out of tasks: prefer `StructuredTaskScope` (Mod012). It
-makes cancellation and aggregation explicit instead of hidden in a lock protocol.
-
-A good rule of thumb: reach for an explicit lock only when no higher-level
-abstraction in `java.util.concurrent` covers the case. The library version is
-almost always faster and easier to reason about.
-*/
-
 public final class Mod004ExplicitLocks {
 
     private Mod004ExplicitLocks() {}
 
-    // --- Section 1: ReentrantLock basics ---
+    /*
+    ReentrantLock basics
+
+    - ReentrantLock is the explicit, library-level alternative to the synchronized keyword. The semantics are similar
+      — same thread can re-enter, monitor-style mutual exclusion, happens-before on unlock — but the API is much
+      richer.
+    - The mandatory shape is lock(); try { ... } finally { unlock(); }. If you forget the finally, an exception in the
+      critical section leaks the lock and every other thread blocks forever.
+    - Pros over synchronized: timeout, interruptible acquisition, multiple condition queues per lock, fairness, and
+      rich introspection (getOwner, getQueuedThreads, getQueueLength).
+    - Cons: more verbose; failure to call unlock is silent; you cannot use try-with-resources directly. In practice,
+      prefer synchronized for simple mutual exclusion and ReentrantLock only when you need a feature it provides.
+    */
     static void reentrantLockBasics() throws InterruptedException {
         System.out.println("[Section 1] ReentrantLock basics");
 
@@ -223,7 +115,16 @@ public final class Mod004ExplicitLocks {
         t1.join(); t2.join();
     }
 
-    // --- Section 2: producer–consumer with two conditions ---
+    /*
+    Multiple Conditions on one lock
+
+    - An intrinsic monitor has only one wait set; you must notifyAll and let waiters re-check their predicates. Under
+      heavy load, this wakes too many threads.
+    - lock.newCondition() creates a separate wait queue tied to the same lock. You can give producers and consumers
+      their own conditions ("not full", "not empty"), and signal only the relevant side.
+    - Same scaffold as wait/notify: await() releases the lock and parks; signal() or signalAll() wakes one or all
+      waiters. Just like wait, awaits must be in a while loop because of spurious wakeups.
+    */
     static void twoConditionsPC() throws InterruptedException {
         System.out.println("[Section 2] producer–consumer with two Conditions");
 
@@ -249,7 +150,16 @@ public final class Mod004ExplicitLocks {
         consumer.join();
     }
 
-    // --- Section 3: tryLock with timeout ---
+    /*
+    tryLock and tryLock(timeout)
+
+    - lock.tryLock() attempts to acquire the lock and returns true on success or false immediately if it is held by
+      someone else. Use it when you want a fallback path instead of blocking — for example, "skip this update if a
+      snapshot is in progress".
+    - lock.tryLock(timeout, unit) waits up to timeout. Returns false on timeout, throws InterruptedException if
+      interrupted. This is the building block for deadlock-resistant code: acquire each lock with a small timeout and
+      back off if both locks cannot be obtained.
+    */
     static void tryLockWithTimeout() throws InterruptedException {
         System.out.println("[Section 3] tryLock with timeout");
 
@@ -275,7 +185,17 @@ public final class Mod004ExplicitLocks {
         holder.join();
     }
 
-    // --- Section 4: fairness ---
+    /*
+    Fairness
+
+    - A fair lock grants the lock in FIFO order: the longest-waiting thread always wins. Construct one with
+      new ReentrantLock(true).
+    - A non-fair lock (the default) lets a newly arriving thread "barge" past the queue if it happens to find the lock
+      free. This is faster on average — barging keeps cores busy — but a thread can starve indefinitely under
+      contention.
+    - Use fairness when starvation is observable and the throughput cost is acceptable; use the default everywhere
+      else.
+    */
     static void fairness() throws InterruptedException {
         System.out.println("[Section 4] fairness");
 
@@ -299,7 +219,18 @@ public final class Mod004ExplicitLocks {
         System.out.println("  fair acquisition order: " + order);
     }
 
-    // --- Section 5: ReentrantReadWriteLock ---
+    /*
+    ReentrantReadWriteLock
+
+    - A read–write lock has two underlying locks: any number of threads can hold the read lock simultaneously, but the
+      write lock is exclusive against both readers and other writers.
+    - Best for read-heavy workloads. Under read-mostly traffic, readers run in parallel; under write-heavy traffic the
+      read–write protocol adds overhead with no payoff.
+    - Same lock()/unlock() shape, but you must take the right side: readLock() or writeLock(). A reader cannot upgrade
+      to a writer atomically (you must release the read lock first), but a writer holding the write lock can downgrade
+      by acquiring the read lock and then releasing the write lock.
+    - The API is older than StampedLock and lacks optimistic reads — see §6.
+    */
     static void readWriteLock() throws InterruptedException {
         System.out.println("[Section 5] ReentrantReadWriteLock");
 
@@ -326,7 +257,19 @@ public final class Mod004ExplicitLocks {
         System.out.println("  final a=" + store.get("a"));
     }
 
-    // --- Section 6: StampedLock with optimistic reads ---
+    /*
+    StampedLock and optimistic reads
+
+    - StampedLock (Java 8+) provides three modes: write, read, and optimistic read. Each lock/unlock returns a long
+      stamp used to release or validate.
+    - Optimistic read: call tryOptimisticRead(), snapshot the fields, then call validate(stamp). If no writer has
+      acquired the lock in between, your snapshot is consistent and you skipped the read-lock cost entirely. Otherwise
+      you fall back to the conventional readLock().
+    - StampedLock is not reentrant and does not support Condition. Treat it as a high-performance specialist for
+      read-mostly hot paths, not a drop-in replacement for ReentrantReadWriteLock.
+    - tryConvertToWriteLock(stamp) lets you upgrade a read stamp to a write stamp without releasing first; it can
+      return 0 if conversion is impossible, in which case you release and acquire the write lock conventionally.
+    */
     static void stampedLock() throws InterruptedException {
         System.out.println("[Section 6] StampedLock");
 

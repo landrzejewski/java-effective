@@ -3,15 +3,15 @@ package pl.training.concurrency.extras.chat_v3;
 import io.reactivex.Observable;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.schedulers.Schedulers;
-import lombok.extern.java.Log;
-
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.logging.Level;
+import java.util.logging.Logger;
 
-@Log
 public class ChatServer {
+
+    private static final Logger log = Logger.getLogger(ChatServer.class.getName());
 
     private final CompositeDisposable compositeDisposable = new CompositeDisposable();
     private final Connections connections = new Connections();

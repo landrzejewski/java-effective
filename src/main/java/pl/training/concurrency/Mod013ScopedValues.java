@@ -4,149 +4,6 @@ import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.StructuredTaskScope;
 
-// =================================================================================================
-// Section 1: The ThreadLocal problem with virtual threads
-// =================================================================================================
-
-/*
-## The ThreadLocal problem with virtual threads
-
-- A `ThreadLocal<T>` gives every thread its own slot. With platform threads
-this is fine — there are at most a few hundred threads.
-- With virtual threads there can be millions of them, each carrying a copy of
-every `ThreadLocal` value. Memory cost scales with the number of in-flight
-requests.
-- `InheritableThreadLocal` (the only built-in inheritance mechanism) only
-inherits values once at thread creation; mutations after that are not
-propagated. Use it cautiously.
-- `ThreadLocal` is also *mutable*: any code holding a reference to the
-ThreadLocal instance can rewrite the value. That makes audits hard.
-- For *immutable, lexically-bound, request-scoped* context propagation,
-`ScopedValue` (JEP 506, finalized in Java 25) is the right tool.
-*/
-
-// =================================================================================================
-// Section 2: Declaring a ScopedValue
-// =================================================================================================
-
-/*
-## Declaring a ScopedValue
-
-- A `ScopedValue<T>` is a typed key, declared once per program (typically
-`static final`):
-```java
-static final ScopedValue<String> CURRENT_USER = ScopedValue.newInstance();
-```
-- A binding is established with `ScopedValue.where(KEY, value).run(Runnable)`
-or `.call(Callable)`. Inside the body, `KEY.get()` returns the value.
-- Outside the binding, `KEY.get()` throws `NoSuchElementException`. Always
-guard with `KEY.isBound()` if you might be called outside a bound region.
-- The binding is **immutable for its lifetime** — there is no setter. If you
-want a different value, open a new binding.
-*/
-
-// =================================================================================================
-// Section 3: Reading from a deep call chain
-// =================================================================================================
-
-/*
-## Reading from a deep call chain
-
-- The whole point of `ScopedValue` is that the binding is visible to every
-method called transitively from inside the `run()` body, without parameter
-passing.
-- A controller binds the request context, the service reads it, the repository
-reads it. None of the methods need an extra argument.
-- Compared to `ThreadLocal`, the read is just as cheap (final reference, no
-hash lookup) and the code is much easier to audit because the only places
-that *bind* are clearly visible at the call sites.
-*/
-
-// =================================================================================================
-// Section 4: Rebinding in nested scopes
-// =================================================================================================
-
-/*
-## Rebinding in nested scopes
-
-- A nested `where(KEY, otherValue).run(...)` shadows the outer binding for the
-duration of the inner block. When the inner block finishes, the outer value is
-restored.
-- This mirrors the lexical-scope behaviour of Rust shadowing — the variable
-keeps the same name but takes a different value within an inner region.
-- Typical use: an outer binding for the user, an inner binding that runs an
-audit-log call as `system` and then returns to the user binding.
-*/
-
-// =================================================================================================
-// Section 5: Inheritance into StructuredTaskScope
-// =================================================================================================
-
-/*
-## Inheritance into StructuredTaskScope
-
-- When a `ScopedValue` binding is active, every sub-task forked from a
-`StructuredTaskScope` inside the binding **inherits** the value automatically.
-- This is exactly the propagation pattern web frameworks need: bind the trace
-id and the current user once at the top of the request handler, then let the
-inner fan-out call services without thinking about how to forward the
-context.
-- The inheritance is structural and zero-allocation — the JVM stores the
-binding in a single immutable list shared between parent and children.
-- This is a *big* qualitative win over `InheritableThreadLocal`, which only
-copies values once and not into virtual-thread sub-tasks created later via
-structured concurrency.
-*/
-
-// =================================================================================================
-// Section 6: When ScopedValue is not enough
-// =================================================================================================
-
-/*
-## When ScopedValue is not enough
-
-- `ScopedValue` is read-only. If you need *mutable* per-thread storage — say,
-a reusable `StringBuilder` buffer or a per-request mutable counter that
-methods incrementally update — `ThreadLocal` is still the right tool.
-- For mutable per-request state with a small number of writers, an explicit
-parameter or a context object (`Map<String,Object>` passed by reference) is
-also fine and is often clearer.
-- Bottom line: prefer `ScopedValue` for request context (immutable read-only
-slots), keep `ThreadLocal` for caches and mutable thread-affinity stores.
-*/
-
-// =================================================================================================
-// Section 7: Migration sketch
-// =================================================================================================
-
-/*
-## Migration sketch
-
-A typical `ThreadLocal` used for read-only context:
-
-```java
-// before
-static final ThreadLocal<String> USER = new ThreadLocal<>();
-void handle(Request r) {
-    USER.set(r.user());
-    try { service.process(); }
-    finally { USER.remove(); }      // easy to forget
-}
-String currentUser() { return USER.get(); }
-
-// after
-static final ScopedValue<String> USER = ScopedValue.newInstance();
-void handle(Request r) {
-    ScopedValue.where(USER, r.user()).run(() -> service.process());
-}
-String currentUser() { return USER.get(); }   // throws if unbound
-```
-
-- The migrated version is exception-safe (no `try/finally`), allocation-free
-(no `set` / `remove`), and immutable (no chance of leaking the user value into
-a thread that the pool reuses for another request).
-*/
-
 public final class Mod013ScopedValues {
 
     private Mod013ScopedValues() {}
@@ -156,7 +13,20 @@ public final class Mod013ScopedValues {
     private static final ScopedValue<String> TENANT_ID    = ScopedValue.newInstance();
     private static final ScopedValue<String> TRACE_ID     = ScopedValue.newInstance();
 
-    // --- Section 1: the ThreadLocal-with-virtual-threads memory pressure ---
+    /*
+    The ThreadLocal problem with virtual threads
+
+    - A ThreadLocal<T> gives every thread its own slot. With platform threads this is fine — there are at most a few
+      hundred threads.
+    - With virtual threads there can be millions of them, each carrying a copy of every ThreadLocal value. Memory
+      cost scales with the number of in-flight requests.
+    - InheritableThreadLocal (the only built-in inheritance mechanism) only inherits values once at thread creation;
+      mutations after that are not propagated. Use it cautiously.
+    - ThreadLocal is also mutable: any code holding a reference to the ThreadLocal instance can rewrite the value.
+      That makes audits hard.
+    - For immutable, lexically-bound, request-scoped context propagation, ScopedValue (JEP 506, finalized in Java 25)
+      is the right tool.
+    */
     static void threadLocalProblem() throws InterruptedException {
         System.out.println("[Section 1] ThreadLocal with virtual threads");
 
@@ -176,7 +46,18 @@ public final class Mod013ScopedValues {
         System.out.println("  (works, but each VT carries the slot — see ScopedValue below)");
     }
 
-    // --- Section 2: declaring + binding ---
+    /*
+    Declaring a ScopedValue
+
+    - A ScopedValue<T> is a typed key, declared once per program (typically static final):
+    static final ScopedValue<String> CURRENT_USER = ScopedValue.newInstance();
+    - A binding is established with ScopedValue.where(KEY, value).run(Runnable) or .call(Callable). Inside the body,
+      KEY.get() returns the value.
+    - Outside the binding, KEY.get() throws NoSuchElementException. Always guard with KEY.isBound() if you might be
+      called outside a bound region.
+    - The binding is immutable for its lifetime — there is no setter. If you want a different value, open a new
+      binding.
+    */
     static void bindingBasics() {
         System.out.println("[Section 2] declaring + binding");
 
@@ -193,7 +74,16 @@ public final class Mod013ScopedValues {
         System.out.println("  isBound() outside scope = " + CURRENT_USER.isBound());
     }
 
-    // --- Section 3: deep call chain ---
+    /*
+    Reading from a deep call chain
+
+    - The whole point of ScopedValue is that the binding is visible to every method called transitively from inside
+      the run() body, without parameter passing.
+    - A controller binds the request context, the service reads it, the repository reads it. None of the methods
+      need an extra argument.
+    - Compared to ThreadLocal, the read is just as cheap (final reference, no hash lookup) and the code is much
+      easier to audit because the only places that bind are clearly visible at the call sites.
+    */
     static void deepCallChain() {
         System.out.println("[Section 3] deep call chain — no parameter passing");
 
@@ -208,7 +98,16 @@ public final class Mod013ScopedValues {
                 + ", tenant=" + TENANT_ID.get());
     }
 
-    // --- Section 4: rebinding ---
+    /*
+    Rebinding in nested scopes
+
+    - A nested where(KEY, otherValue).run(...) shadows the outer binding for the duration of the inner block. When
+      the inner block finishes, the outer value is restored.
+    - This mirrors the lexical-scope behaviour of Rust shadowing — the variable keeps the same name but takes a
+      different value within an inner region.
+    - Typical use: an outer binding for the user, an inner binding that runs an audit-log call as system and then
+      returns to the user binding.
+    */
     static void rebinding() {
         System.out.println("[Section 4] rebinding in nested scopes");
 
@@ -220,7 +119,19 @@ public final class Mod013ScopedValues {
         });
     }
 
-    // --- Section 5: inheritance into StructuredTaskScope sub-tasks ---
+    /*
+    Inheritance into StructuredTaskScope
+
+    - When a ScopedValue binding is active, every sub-task forked from a StructuredTaskScope inside the binding
+      inherits the value automatically.
+    - This is exactly the propagation pattern web frameworks need: bind the trace id and the current user once at the
+      top of the request handler, then let the inner fan-out call services without thinking about how to forward the
+      context.
+    - The inheritance is structural and zero-allocation — the JVM stores the binding in a single immutable list
+      shared between parent and children.
+    - This is a big qualitative win over InheritableThreadLocal, which only copies values once and not into
+      virtual-thread sub-tasks created later via structured concurrency.
+    */
     static void inheritanceIntoScope() throws InterruptedException {
         System.out.println("[Section 5] inheritance into StructuredTaskScope");
 
@@ -242,7 +153,16 @@ public final class Mod013ScopedValues {
         });
     }
 
-    // --- Section 6: ScopedValue is read-only ---
+    /*
+    When ScopedValue is not enough
+
+    - ScopedValue is read-only. If you need mutable per-thread storage — say, a reusable StringBuilder buffer or a
+      per-request mutable counter that methods incrementally update — ThreadLocal is still the right tool.
+    - For mutable per-request state with a small number of writers, an explicit parameter or a context object
+      (Map<String,Object> passed by reference) is also fine and is often clearer.
+    - Bottom line: prefer ScopedValue for request context (immutable read-only slots), keep ThreadLocal for caches
+      and mutable thread-affinity stores.
+    */
     static void readOnlyShowcase() {
         System.out.println("[Section 6] ScopedValue is read-only");
 
@@ -253,7 +173,30 @@ public final class Mod013ScopedValues {
         });
     }
 
-    // --- Section 7: migration sketch in code ---
+    /*
+    Migration sketch
+
+    A typical ThreadLocal used for read-only context:
+
+    // before
+    static final ThreadLocal<String> USER = new ThreadLocal<>();
+    void handle(Request r) {
+        USER.set(r.user());
+        try { service.process(); }
+        finally { USER.remove(); }      // easy to forget
+    }
+    String currentUser() { return USER.get(); }
+
+    // after
+    static final ScopedValue<String> USER = ScopedValue.newInstance();
+    void handle(Request r) {
+        ScopedValue.where(USER, r.user()).run(() -> service.process());
+    }
+    String currentUser() { return USER.get(); }   // throws if unbound
+
+    - The migrated version is exception-safe (no try/finally), allocation-free (no set / remove), and immutable (no
+      chance of leaking the user value into a thread that the pool reuses for another request).
+    */
     static void migrationSketch() {
         System.out.println("[Section 7] migration sketch");
 

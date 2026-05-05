@@ -6,53 +6,16 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.RecursiveTask;
 
-// =================================================================================================
-// Section 1: The work-stealing model
-// =================================================================================================
-
 /*
-## The work-stealing model
+The work-stealing model
 
-- A `ForkJoinPool` keeps each worker thread's tasks in a private deque.
-- Workers push new sub-tasks on top of their own deque (LIFO — best for cache
-locality) and pop from the top when they need work.
-- When a worker's deque empties, it **steals** a task from the bottom of another
-worker's deque (FIFO — the oldest, biggest piece). The asymmetry keeps stealing
-cheap and avoids contention with the owner.
-- For divide-and-conquer workloads (recursive splits, balanced trees,
-embarrassingly parallel data), work-stealing fills cores well even when split
-sizes are uneven.
-*/
-
-// =================================================================================================
-// Section 2: ForkJoinPool and the common pool
-// =================================================================================================
-
-/*
-## ForkJoinPool and the common pool
-
-- The JVM exposes a singleton `ForkJoinPool.commonPool()` shared across the
-process. It is also the default backing pool for parallel streams (Mod010) and
-`CompletableFuture` async stages (Mod009).
-- Default size is `Runtime.getRuntime().availableProcessors() - 1`.
-- Sharing the common pool is fine for short, CPU-bound tasks. For long-running
-or blocking work, allocate a dedicated `new ForkJoinPool(N)` instead — long
-tasks on the common pool starve everyone else.
-*/
-
-// =================================================================================================
-// Section 3: RecursiveAction (no result)
-// =================================================================================================
-
-/*
-## RecursiveAction (no result)
-
-- Subclass `RecursiveAction` and implement `compute()` to perform a side-effecting
-parallel decomposition (e.g., bulk update of an array).
-- The `compute()` method either does the work for a small enough chunk (the *base
-case*), or splits into sub-actions and forks them.
-- Submit with `pool.invoke(action)` (blocking) or `pool.submit(action)` (returns
-a `ForkJoinTask`).
+- A ForkJoinPool keeps each worker thread's tasks in a private deque.
+- Workers push new sub-tasks on top of their own deque (LIFO — best for cache locality) and pop from the top when
+  they need work.
+- When a worker's deque empties, it steals a task from the bottom of another worker's deque (FIFO — the oldest,
+  biggest piece). The asymmetry keeps stealing cheap and avoids contention with the owner.
+- For divide-and-conquer workloads (recursive splits, balanced trees, embarrassingly parallel data), work-stealing
+  fills cores well even when split sizes are uneven.
 */
 
 final class IncrementAction extends RecursiveAction {
@@ -72,23 +35,6 @@ final class IncrementAction extends RecursiveAction {
         }
     }
 }
-
-// =================================================================================================
-// Section 4: RecursiveTask<V> (with result)
-// =================================================================================================
-
-/*
-## RecursiveTask<V> (with result)
-
-- Subclass `RecursiveTask<V>` for parallel reductions that compute and return a
-value.
-- Same divide-and-conquer skeleton, but `compute()` returns a `V` and the parent
-combines the children's values.
-- Use the canonical pattern below: `fork()` the first child to run async, then
-`compute()` the second on the current thread, then `join()` the first. This is
-*one* fewer fork than `fork(); fork(); join(); join();` (the simpler-looking
-pattern) and avoids one wasted thread switch.
-*/
 
 final class SumTask extends RecursiveTask<Long> {
     private final long[] data;
@@ -112,64 +58,19 @@ final class SumTask extends RecursiveTask<Long> {
     }
 }
 
-// =================================================================================================
-// Section 5: fork vs compute vs invoke
-// =================================================================================================
-
-/*
-## fork vs compute vs invoke
-
-- `fork()` schedules the task on the current pool's deque and returns
-immediately. Use it on at most N-1 of N children — the last child is more
-efficient as a `compute()` because it stays on the current thread (no enqueue,
-no steal).
-- `compute()` runs the task synchronously on the current thread. It is the body
-of the recursion.
-- `invoke()` is `fork()` followed by `join()` — synchronous from the caller's
-perspective.
-- `invokeAll(t1, t2, ...)` is the convenient form for `RecursiveAction`. For
-results, prefer the explicit `fork() + compute() + join()` pattern.
-*/
-
-// =================================================================================================
-// Section 6: Threshold tuning
-// =================================================================================================
-
-/*
-## Threshold tuning
-
-- Splitting has overhead: forks, deque operations, possibly steals. Below some
-chunk size the per-element work is dominated by bookkeeping and parallel is
-slower than serial.
-- The right threshold depends on per-element cost. Common heuristic: pick the
-smallest threshold at which the parallel run is no slower than the sequential
-one — bigger thresholds waste cores; smaller thresholds waste overhead.
-- Measure on the actual workload. Nothing else is reliable.
-*/
-
-// =================================================================================================
-// Section 7: Bridge to parallel streams
-// =================================================================================================
-
-/*
-## Bridge to parallel streams
-
-- Parallel streams are a high-level facade over the common ForkJoinPool. They
-hide all the threshold and split logic in a `Spliterator`, so the code looks
-sequential but runs on multiple cores.
-- Use a parallel stream when:
-  - The data structure has an efficient spliterator (`ArrayList`, arrays,
-    `ConcurrentHashMap.values()` — yes; `LinkedList` — no).
-  - The per-element cost is non-trivial (microseconds, not nanoseconds).
-  - The combining function is associative (a `Stream::reduce` requirement).
-- See Mod010 for the full treatment, including the pitfalls.
-*/
-
 public final class Mod008ForkJoin {
 
     private Mod008ForkJoin() {}
 
-    // --- Section 2: inspect the common pool ---
+    /*
+    ForkJoinPool and the common pool
+
+    - The JVM exposes a singleton ForkJoinPool.commonPool() shared across the process. It is also the default backing
+      pool for parallel streams (Mod010) and CompletableFuture async stages (Mod009).
+    - Default size is Runtime.getRuntime().availableProcessors() - 1.
+    - Sharing the common pool is fine for short, CPU-bound tasks. For long-running or blocking work, allocate a
+      dedicated new ForkJoinPool(N) instead — long tasks on the common pool starve everyone else.
+    */
     static void commonPool() {
         System.out.println("[Section 2] common pool");
 
@@ -178,7 +79,15 @@ public final class Mod008ForkJoin {
                 + ", availableProcessors = " + Runtime.getRuntime().availableProcessors());
     }
 
-    // --- Section 3: RecursiveAction ---
+    /*
+    RecursiveAction (no result)
+
+    - Subclass RecursiveAction and implement compute() to perform a side-effecting parallel decomposition (e.g., bulk
+      update of an array).
+    - The compute() method either does the work for a small enough chunk (the base case), or splits into sub-actions
+      and forks them.
+    - Submit with pool.invoke(action) (blocking) or pool.submit(action) (returns a ForkJoinTask).
+    */
     static void recursiveAction() {
         System.out.println("[Section 3] RecursiveAction");
 
@@ -188,7 +97,25 @@ public final class Mod008ForkJoin {
                 + " (each incremented exactly once)");
     }
 
-    // --- Section 4 + 5: RecursiveTask, fork/compute/join pattern ---
+    /*
+    RecursiveTask<V> (with result)
+
+    - Subclass RecursiveTask<V> for parallel reductions that compute and return a value.
+    - Same divide-and-conquer skeleton, but compute() returns a V and the parent combines the children's values.
+    - Use the canonical pattern below: fork() the first child to run async, then compute() the second on the current
+      thread, then join() the first. This is one fewer fork than fork(); fork(); join(); join(); (the simpler-looking
+      pattern) and avoids one wasted thread switch.
+
+    fork vs compute vs invoke
+
+    - fork() schedules the task on the current pool's deque and returns immediately. Use it on at most N-1 of N
+      children — the last child is more efficient as a compute() because it stays on the current thread (no enqueue,
+      no steal).
+    - compute() runs the task synchronously on the current thread. It is the body of the recursion.
+    - invoke() is fork() followed by join() — synchronous from the caller's perspective.
+    - invokeAll(t1, t2, ...) is the convenient form for RecursiveAction. For results, prefer the explicit
+      fork() + compute() + join() pattern.
+    */
     static void recursiveTask() {
         System.out.println("[Section 4-5] RecursiveTask + fork/compute/join");
 
@@ -209,7 +136,16 @@ public final class Mod008ForkJoin {
         System.out.println("  serial   sum = " + serial   + " (" + serialMs   + " ms)");
     }
 
-    // --- Section 6: threshold sweep ---
+    /*
+    Threshold tuning
+
+    - Splitting has overhead: forks, deque operations, possibly steals. Below some chunk size the per-element work is
+      dominated by bookkeeping and parallel is slower than serial.
+    - The right threshold depends on per-element cost. Common heuristic: pick the smallest threshold at which the
+      parallel run is no slower than the sequential one — bigger thresholds waste cores; smaller thresholds waste
+      overhead.
+    - Measure on the actual workload. Nothing else is reliable.
+    */
     static void thresholdSweep() {
         System.out.println("[Section 6] threshold tuning");
 
@@ -225,7 +161,18 @@ public final class Mod008ForkJoin {
         }
     }
 
-    // --- Section 7: parallel streams use the same pool ---
+    /*
+    Bridge to parallel streams
+
+    - Parallel streams are a high-level facade over the common ForkJoinPool. They hide all the threshold and split
+      logic in a Spliterator, so the code looks sequential but runs on multiple cores.
+    - Use a parallel stream when:
+      - The data structure has an efficient spliterator (ArrayList, arrays, ConcurrentHashMap.values() — yes;
+        LinkedList — no).
+      - The per-element cost is non-trivial (microseconds, not nanoseconds).
+      - The combining function is associative (a Stream::reduce requirement).
+    - See Mod010 for the full treatment, including the pitfalls.
+    */
     static void parallelStreamUsesCommonPool() {
         System.out.println("[Section 7] parallel streams ride on the common pool");
 

@@ -7,106 +7,6 @@ import java.util.TreeMap;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
-// =================================================================================================
-// Section 1: Basic collectors
-// =================================================================================================
-
-/*
-## Basic collectors
-
-`stream.collect(Collectors.X(...))` is the canonical way to materialise a
-stream into a container. The most common building blocks:
-
-- `toList()` — modifiable `ArrayList`. Java 16+: `Stream.toList()` is the
-  **unmodifiable** equivalent and is shorter to write.
-- `toUnmodifiableList()`, `toUnmodifiableSet()`, `toUnmodifiableMap()` —
-  return immutable containers; mutating them throws.
-- `toSet()` — modifiable `HashSet`; order undefined.
-- `toMap(keyFn, valueFn)` — fail on duplicate keys (`IllegalStateException`).
-  Use the 3-arg overload with a *merge function* if duplicates are possible.
-- `joining([delimiter[, prefix, suffix]])` — concatenate `CharSequence`
-  elements.
-*/
-
-// =================================================================================================
-// Section 2: groupingBy
-// =================================================================================================
-
-/*
-## groupingBy
-
-`Collectors.groupingBy(keyFn)` groups elements by the result of `keyFn`,
-producing `Map<K, List<T>>` by default.
-
-A 2-arg overload `groupingBy(keyFn, downstreamCollector)` lets you replace the
-default `toList()` with anything: `counting()`, `summingInt()`, `mapping()`,
-`reducing()`, even another `groupingBy()` for nested groupings.
-
-A 3-arg overload `groupingBy(keyFn, mapFactory, downstream)` lets you choose
-the map type — `TreeMap`, `LinkedHashMap`, `EnumMap` — when ordering matters.
-*/
-
-// =================================================================================================
-// Section 3: partitioningBy
-// =================================================================================================
-
-/*
-## partitioningBy
-
-`Collectors.partitioningBy(predicate)` is `groupingBy` with a fixed key set
-`{ true, false }`. The result is always a 2-entry map; both keys are present
-even when one bucket is empty.
-
-When you need exactly a yes/no split, prefer `partitioningBy` over
-`groupingBy` — it conveys intent and guarantees the empty key.
-*/
-
-// =================================================================================================
-// Section 4: Downstream composition
-// =================================================================================================
-
-/*
-## Downstream composition
-
-The "groupingBy + downstream" combinator covers most real-world aggregations:
-
-- `groupingBy(K, counting())` — histogram.
-- `groupingBy(K, summingDouble(toDouble))` — total per group.
-- `groupingBy(K, mapping(extractor, toList()))` — group, then transform each
-  element to something simpler before collecting.
-- `groupingBy(K, reducing(BinaryOperator))` — fold each group into a single
-  value (e.g., the max-priced order per customer).
-- `groupingBy(K1, groupingBy(K2, ...))` — nested grouping.
-
-`mapping` is the under-rated one: it is a *collector adapter* that applies a
-transformation before the downstream collector sees the element. Without it,
-you would have to map *before* the groupingBy and lose access to the original
-element.
-*/
-
-// =================================================================================================
-// Section 5: Custom Collector
-// =================================================================================================
-
-/*
-## Custom Collector
-
-A `Collector<T, A, R>` has four moving parts plus characteristics:
-
-- `Supplier<A> supplier` — create an empty accumulator.
-- `BiConsumer<A, T> accumulator` — fold one element into the accumulator.
-- `BinaryOperator<A> combiner` — merge two accumulators (used in parallel).
-- `Function<A, R> finisher` — turn the final accumulator into the result.
-- `Set<Characteristics>` — `CONCURRENT`, `UNORDERED`, `IDENTITY_FINISH`.
-
-The `Collector.of(supplier, accumulator, combiner [, finisher][, chars])`
-factory lets you build one in a single expression for cases where extending
-`Collector` interface is overkill.
-
-Most "I need a custom collector" needs are actually solved by
-`reduce(...)` or `Collectors.collectingAndThen(...)` — try those first.
-*/
-
 public final class Mod005Collectors {
 
     private Mod005Collectors() {}
@@ -123,7 +23,21 @@ public final class Mod005Collectors {
             new Order("bob",   "SKU-004",  3,  49.50),
             new Order("alice", "SKU-002",  1, 199.00));
 
-    // --- Section 1: basic collectors ---
+    /*
+    Basic collectors
+
+    stream.collect(Collectors.X(...)) is the canonical way to materialise a stream into a container. The most common
+    building blocks:
+
+    - toList() — modifiable ArrayList. Java 16+: Stream.toList() is the unmodifiable equivalent and is shorter to
+      write.
+    - toUnmodifiableList(), toUnmodifiableSet(), toUnmodifiableMap() — return immutable containers; mutating them
+      throws.
+    - toSet() — modifiable HashSet; order undefined.
+    - toMap(keyFn, valueFn) — fail on duplicate keys (IllegalStateException). Use the 3-arg overload with a merge
+      function if duplicates are possible.
+    - joining([delimiter[, prefix, suffix]]) — concatenate CharSequence elements.
+    */
     static void basicCollectors() {
         System.out.println("[Section 1] basic collectors");
 
@@ -146,7 +60,17 @@ public final class Mod005Collectors {
         System.out.println("  joined SKUs         = " + list);
     }
 
-    // --- Section 2: groupingBy ---
+    /*
+    groupingBy
+
+    Collectors.groupingBy(keyFn) groups elements by the result of keyFn, producing Map<K, List<T>> by default.
+
+    A 2-arg overload groupingBy(keyFn, downstreamCollector) lets you replace the default toList() with anything:
+    counting(), summingInt(), mapping(), reducing(), even another groupingBy() for nested groupings.
+
+    A 3-arg overload groupingBy(keyFn, mapFactory, downstream) lets you choose the map type — TreeMap,
+    LinkedHashMap, EnumMap — when ordering matters.
+    */
     static void groupingBy() {
         System.out.println("[Section 2] groupingBy");
 
@@ -172,7 +96,15 @@ public final class Mod005Collectors {
         System.out.println("  sorted (TreeMap) = " + sorted);
     }
 
-    // --- Section 3: partitioningBy ---
+    /*
+    partitioningBy
+
+    Collectors.partitioningBy(predicate) is groupingBy with a fixed key set { true, false }. The result is always a
+    2-entry map; both keys are present even when one bucket is empty.
+
+    When you need exactly a yes/no split, prefer partitioningBy over groupingBy — it conveys intent and guarantees
+    the empty key.
+    */
     static void partitioningBy() {
         System.out.println("[Section 3] partitioningBy");
 
@@ -187,7 +119,23 @@ public final class Mod005Collectors {
         System.out.println("  counts = " + counts);
     }
 
-    // --- Section 4: downstream composition ---
+    /*
+    Downstream composition
+
+    The "groupingBy + downstream" combinator covers most real-world aggregations:
+
+    - groupingBy(K, counting()) — histogram.
+    - groupingBy(K, summingDouble(toDouble)) — total per group.
+    - groupingBy(K, mapping(extractor, toList())) — group, then transform each element to something simpler before
+      collecting.
+    - groupingBy(K, reducing(BinaryOperator)) — fold each group into a single value (e.g., the max-priced order per
+      customer).
+    - groupingBy(K1, groupingBy(K2, ...)) — nested grouping.
+
+    mapping is the under-rated one: it is a collector adapter that applies a transformation before the downstream
+    collector sees the element. Without it, you would have to map before the groupingBy and lose access to the
+    original element.
+    */
     static void downstreamComposition() {
         System.out.println("[Section 4] downstream composition");
 
@@ -214,7 +162,23 @@ public final class Mod005Collectors {
         System.out.println("  nested = " + nested);
     }
 
-    // --- Section 5: custom Collector ---
+    /*
+    Custom Collector
+
+    A Collector<T, A, R> has four moving parts plus characteristics:
+
+    - Supplier<A> supplier — create an empty accumulator.
+    - BiConsumer<A, T> accumulator — fold one element into the accumulator.
+    - BinaryOperator<A> combiner — merge two accumulators (used in parallel).
+    - Function<A, R> finisher — turn the final accumulator into the result.
+    - Set<Characteristics> — CONCURRENT, UNORDERED, IDENTITY_FINISH.
+
+    The Collector.of(supplier, accumulator, combiner [, finisher][, chars]) factory lets you build one in a single
+    expression for cases where extending Collector interface is overkill.
+
+    Most "I need a custom collector" needs are actually solved by reduce(...) or Collectors.collectingAndThen(...) —
+    try those first.
+    */
     static void customCollector() {
         System.out.println("[Section 5] custom Collector");
 

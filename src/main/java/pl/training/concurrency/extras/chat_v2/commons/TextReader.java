@@ -1,16 +1,16 @@
 package pl.training.concurrency.extras.chat_v2.commons;
 
-import lombok.extern.java.Log;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.Socket;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
-@Log
 public class TextReader {
+
+    private static final Logger log = Logger.getLogger(TextReader.class.getName());
 
     private final Consumer<String> textConsumer;
     private BufferedReader reader;

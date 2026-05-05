@@ -2,134 +2,6 @@ package pl.training.functionalfeatures;
 
 import java.util.List;
 
-// =================================================================================================
-// Section 1: Type patterns in switch (Java 21)
-// =================================================================================================
-
-/*
-## Type patterns in switch (Java 21)
-
-A `switch` over a value of static type `Object` (or any other supertype) can
-dispatch on the runtime type, with a binding scoped to the case body:
-
-```java
-String label = switch (obj) {
-    case Integer i -> "int: " + i;
-    case String s  -> "string: " + s;
-    case null      -> "null";
-    default        -> "other";
-};
-```
-
-- The type label `Integer i` is a *type pattern* — it both tests
-  `obj instanceof Integer` and binds `i` for the body.
-- Inside a single case, the binding is scoped exactly to that arrow's body.
-- A type pattern is exhaustive only when the selector's static type is a
-  sealed type (Mod010); otherwise a `default` is required.
-*/
-
-// =================================================================================================
-// Section 2: Guarded patterns with when
-// =================================================================================================
-
-/*
-## Guarded patterns with `when`
-
-A *guard* is an extra boolean test attached to a pattern:
-
-```java
-case Integer i when i > 0 -> "positive";
-case Integer i            -> "non-positive";
-```
-
-- The guard fires *after* the type test and the binding succeed.
-- Two cases of the same type but different guards must appear in the order
-  most-specific-first; a later case is reached only if the earlier guard
-  fails.
-- The compiler does not consider guards when computing exhaustiveness — a
-  switch where every case is guarded must still have a fallback.
-*/
-
-// =================================================================================================
-// Section 3: Null pattern
-// =================================================================================================
-
-/*
-## Null pattern
-
-By default, a `switch` selector that is `null` throws `NullPointerException`
-(same as before pattern matching). Pattern-matching switches let you
-explicitly handle `null`:
-
-```java
-switch (obj) {
-    case null      -> "missing";
-    case String s  -> "string: " + s;
-    default        -> "other";
-}
-```
-
-- `case null` must be a separate label.
-- The combined label `case null, default ->` handles "null or anything not
-  matched above" in one shot — useful for "tolerate everything weird"
-  fallbacks.
-*/
-
-// =================================================================================================
-// Section 4: Combined null + default
-// =================================================================================================
-
-/*
-## Combined null + default
-
-`case null, default -> ...` is a single label that fires for `null` or for
-any value not matched by an earlier case. It is the cleanest way to write a
-total switch that also tolerates `null`.
-
-The order matters: the combined label must be last, just like a plain
-`default`. Earlier `case null ->` plus a separate `default ->` is also legal
-and sometimes clearer when each path does different work.
-*/
-
-// =================================================================================================
-// Section 5: Dominance rules
-// =================================================================================================
-
-/*
-## Dominance rules
-
-A switch over a polymorphic selector must avoid *unreachable* cases. If a
-later case's pattern is a subtype of an earlier case's pattern (or otherwise
-fully covered by it), the compiler rejects the later case as unreachable:
-
-```java
-switch (n) {
-    case Number num -> "number";
-    case Integer i  -> "int";        // ERROR: dominated by Number
-}
-```
-
-The fix is to put the more specific pattern first, or to add a guard to the
-broader one. Guards influence reachability — a guarded `Number` case does
-*not* dominate a later `Integer` case because the guard might fail.
-*/
-
-// =================================================================================================
-// Section 6: Exhaustiveness with sealed types (preview of Mod010)
-// =================================================================================================
-
-/*
-## Exhaustiveness with sealed types
-
-When the selector is a *sealed* interface, the compiler knows the closed
-universe of subtypes and enforces total coverage at compile time. Adding a
-new permitted subtype later breaks every existing switch — the same payoff as
-exhaustive enum switches.
-
-Mod010 has the full record-pattern + sealed-types story; this section just
-shows the trivial sealed switch to set up the next module.
-*/
-
 public final class Mod009PatternMatchingSwitch {
 
     private Mod009PatternMatchingSwitch() {}
@@ -140,7 +12,24 @@ public final class Mod009PatternMatchingSwitch {
     record Logout(String user) implements Event {}
     record Heartbeat(int seq) implements Event {}
 
-    // --- Section 1: type patterns in switch ---
+    /*
+    Type patterns in switch (Java 21)
+
+    A switch over a value of static type Object (or any other supertype) can dispatch on the runtime type, with a
+    binding scoped to the case body:
+
+    String label = switch (obj) {
+        case Integer i -> "int: " + i;
+        case String s  -> "string: " + s;
+        case null      -> "null";
+        default        -> "other";
+    };
+
+    - The type label Integer i is a type pattern — it both tests obj instanceof Integer and binds i for the body.
+    - Inside a single case, the binding is scoped exactly to that arrow's body.
+    - A type pattern is exhaustive only when the selector's static type is a sealed type (Mod010); otherwise a
+      default is required.
+    */
     static void typePatternsInSwitch() {
         System.out.println("[Section 1] type patterns in switch");
 
@@ -157,7 +46,20 @@ public final class Mod009PatternMatchingSwitch {
         }
     }
 
-    // --- Section 2: guarded patterns with when ---
+    /*
+    Guarded patterns with when
+
+    A guard is an extra boolean test attached to a pattern:
+
+    case Integer i when i > 0 -> "positive";
+    case Integer i            -> "non-positive";
+
+    - The guard fires after the type test and the binding succeed.
+    - Two cases of the same type but different guards must appear in the order most-specific-first; a later case is
+      reached only if the earlier guard fails.
+    - The compiler does not consider guards when computing exhaustiveness — a switch where every case is guarded
+      must still have a fallback.
+    */
     static void guardedWithWhen() {
         System.out.println("[Section 2] guards with `when`");
 
@@ -175,7 +77,22 @@ public final class Mod009PatternMatchingSwitch {
         }
     }
 
-    // --- Section 3: null pattern ---
+    /*
+    Null pattern
+
+    By default, a switch selector that is null throws NullPointerException (same as before pattern matching).
+    Pattern-matching switches let you explicitly handle null:
+
+    switch (obj) {
+        case null      -> "missing";
+        case String s  -> "string: " + s;
+        default        -> "other";
+    }
+
+    - case null must be a separate label.
+    - The combined label case null, default -> handles "null or anything not matched above" in one shot — useful
+      for "tolerate everything weird" fallbacks.
+    */
     static void nullPattern() {
         System.out.println("[Section 3] null pattern");
 
@@ -190,7 +107,15 @@ public final class Mod009PatternMatchingSwitch {
         }
     }
 
-    // --- Section 4: combined null + default ---
+    /*
+    Combined null + default
+
+    case null, default -> ... is a single label that fires for null or for any value not matched by an earlier
+    case. It is the cleanest way to write a total switch that also tolerates null.
+
+    The order matters: the combined label must be last, just like a plain default. Earlier case null -> plus a
+    separate default -> is also legal and sometimes clearer when each path does different work.
+    */
     static void combinedNullDefault() {
         System.out.println("[Section 4] case null, default ->");
 
@@ -205,7 +130,20 @@ public final class Mod009PatternMatchingSwitch {
         }
     }
 
-    // --- Section 5: dominance — most specific first ---
+    /*
+    Dominance rules
+
+    A switch over a polymorphic selector must avoid unreachable cases. If a later case's pattern is a subtype of an
+    earlier case's pattern (or otherwise fully covered by it), the compiler rejects the later case as unreachable:
+
+    switch (n) {
+        case Number num -> "number";
+        case Integer i  -> "int";        // ERROR: dominated by Number
+    }
+
+    The fix is to put the more specific pattern first, or to add a guard to the broader one. Guards influence
+    reachability — a guarded Number case does not dominate a later Integer case because the guard might fail.
+    */
     static void dominanceRules() {
         System.out.println("[Section 5] dominance rules");
 
@@ -222,7 +160,16 @@ public final class Mod009PatternMatchingSwitch {
         }
     }
 
-    // --- Section 6: sealed-type exhaustiveness ---
+    /*
+    Exhaustiveness with sealed types
+
+    When the selector is a sealed interface, the compiler knows the closed universe of subtypes and enforces total
+    coverage at compile time. Adding a new permitted subtype later breaks every existing switch — the same payoff as
+    exhaustive enum switches.
+
+    Mod010 has the full record-pattern + sealed-types story; this section just shows the trivial sealed switch to
+    set up the next module.
+    */
     static void sealedExhaustiveness() {
         System.out.println("[Section 6] sealed-type exhaustiveness");
 

@@ -10,100 +10,15 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-// =================================================================================================
-// Section 1: Why model with an FSM
-// =================================================================================================
-
 /*
-## Why model with an FSM
+Why model with an FSM
 
-- Every business workflow has a state diagram. Encoding it explicitly
-prevents the canonical bug "the order shipped before it was paid".
-- The DSL turns "for an order in state X receiving event E, go to state Y
-*if* condition C, then run hooks H" into a value you can read top-to-bottom,
-test, and visualise.
-- This module's anchor is an order lifecycle:
-  `PLACED → PAID → SHIPPED → DELIVERED`, with `CANCELLED` and `REFUNDED`
-  side branches. Real systems (Spring State Machine, Akka FSM) use the
-  same vocabulary.
-*/
-
-// =================================================================================================
-// Section 2: States and events as enums
-// =================================================================================================
-
-/*
-## States and events as enums
-
-- States and events are *enums* — closed sets known to the compiler. The
-DSL refuses unknown states / events at compile time, and the FSM can use
-`EnumMap` for fast lookup.
-- The whole transition table is a `Map<State, Map<Event, List<Transition>>>`
-where multiple transitions for the same `(state, event)` are tried in
-order, the first whose guard passes wins.
-*/
-
-// =================================================================================================
-// Section 3: The DSL — `from(S).on(E).to(S').when(guard).do(action)`
-// =================================================================================================
-
-/*
-## The DSL — `from(S).on(E).to(S').when(guard).do(action)`
-
-- The chain is a typical fluent builder: each step returns the next stage,
-the terminal step (`done()` or implicit on `to(...)`) registers the
-transition.
-- `when(predicate)` is optional; without it, the transition has no guard
-and matches unconditionally.
-- Multiple transitions for the same `(state, event)` are legal — the FSM
-tries them in order, useful for "if amount > 0 go to PAID, otherwise go
-to FAILED".
-*/
-
-// =================================================================================================
-// Section 4: Hooks (onEnter, onExit)
-// =================================================================================================
-
-/*
-## Hooks (onEnter, onExit)
-
-- `onEnter(SHIPPED, ctx -> notify(ctx))` registers a callback that fires
-whenever the FSM enters the given state.
-- `onExit(PLACED, ctx -> ...)` fires when leaving.
-- Hooks colocate side effects with the *state*, not with each handler that
-might touch it. Adding a new transition to `SHIPPED` automatically picks
-up the existing on-enter hook.
-*/
-
-// =================================================================================================
-// Section 5: Runtime — fire(context, event) returns Result
-// =================================================================================================
-
-/*
-## Runtime — `fire(context, event)` returns `Result`
-
-- `Result` is a sealed type with `Transitioned(newState)` and
-`TransitionRefused(reason)` variants. No exceptions for control flow.
-- `reason` carries an enum-valued explanation: `NoTransition`,
-`AllGuardsFailed`. Callers can pattern-match the reason and act
-appropriately.
-- The context object (`Order` here) is passed to guards and hooks so they
-can inspect or mutate domain data.
-*/
-
-// =================================================================================================
-// Section 6: End-to-end on the order lifecycle
-// =================================================================================================
-
-/*
-## End-to-end on the order lifecycle
-
-- Build the full order FSM with five transitions and three hooks.
-- Drive a happy-path order through PLACED → PAID → SHIPPED → DELIVERED.
-- Drive a CANCELLED order from PLACED.
-- Show that `PAY` on an order with `amount = 0` is refused (guard fails).
-- Reference table validates each step against an expected (final-state,
-result-type).
+- Every business workflow has a state diagram. Encoding it explicitly prevents the canonical bug "the order shipped
+  before it was paid".
+- The DSL turns "for an order in state X receiving event E, go to state Y if condition C, then run hooks H" into a
+  value you can read top-to-bottom, test, and visualise.
+- This module's anchor is an order lifecycle: PLACED → PAID → SHIPPED → DELIVERED, with CANCELLED and REFUNDED side
+  branches. Real systems (Spring State Machine, Akka FSM) use the same vocabulary.
 */
 
 public final class Mod006StateMachineDsl {
@@ -300,14 +215,29 @@ public final class Mod006StateMachineDsl {
     // Sections
     // =================================================================================================
 
-    // --- Section 2: states + events as enums (visualise the empty FSM)
+    /*
+    States and events as enums
+
+    - States and events are enums — closed sets known to the compiler. The DSL refuses unknown states / events at
+      compile time, and the FSM can use EnumMap for fast lookup.
+    - The whole transition table is a Map<State, Map<Event, List<Transition>>> where multiple transitions for the
+      same (state, event) are tried in order, the first whose guard passes wins.
+    */
     static void statesAndEvents() {
         System.out.println("[Section 2] states + events");
         System.out.println("  states = " + java.util.Arrays.toString(State.values()));
         System.out.println("  events = " + java.util.Arrays.toString(Event.values()));
     }
 
-    // --- Section 3: the DSL chain (no real run yet)
+    /*
+    The DSL — from(S).on(E).to(S').when(guard).do(action)
+
+    - The chain is a typical fluent builder: each step returns the next stage, the terminal step (done() or implicit
+      on to(...)) registers the transition.
+    - when(predicate) is optional; without it, the transition has no guard and matches unconditionally.
+    - Multiple transitions for the same (state, event) are legal — the FSM tries them in order, useful for "if
+      amount > 0 go to PAID, otherwise go to FAILED".
+    */
     static void dslChain() {
         System.out.println("[Section 3] DSL chain (illustration)");
 
@@ -324,7 +254,14 @@ public final class Mod006StateMachineDsl {
         System.out.println("  after fire:  " + ok);
     }
 
-    // --- Section 4: hooks
+    /*
+    Hooks (onEnter, onExit)
+
+    - onEnter(SHIPPED, ctx -> notify(ctx)) registers a callback that fires whenever the FSM enters the given state.
+    - onExit(PLACED, ctx -> ...) fires when leaving.
+    - Hooks colocate side effects with the state, not with each handler that might touch it. Adding a new transition
+      to SHIPPED automatically picks up the existing on-enter hook.
+    */
     static void hooksDemo() {
         System.out.println("[Section 4] hooks fire on enter/exit");
         var fsm = buildOrderFsm();
@@ -334,7 +271,15 @@ public final class Mod006StateMachineDsl {
         System.out.println("  trace: " + order.trace);
     }
 
-    // --- Section 5: result type — pattern match on outcomes
+    /*
+    Runtime — fire(context, event) returns Result
+
+    - Result is a sealed type with Transitioned(newState) and TransitionRefused(reason) variants. No exceptions for
+      control flow.
+    - reason carries an enum-valued explanation: NoTransition, AllGuardsFailed. Callers can pattern-match the reason
+      and act appropriately.
+    - The context object (Order here) is passed to guards and hooks so they can inspect or mutate domain data.
+    */
     static void resultPatternMatch() {
         System.out.println("[Section 5] pattern-match the Result");
 
@@ -350,7 +295,15 @@ public final class Mod006StateMachineDsl {
         System.out.println("  fire(PAY) on PAID order: " + description);
     }
 
-    // --- Section 6: end-to-end with reference assertions
+    /*
+    End-to-end on the order lifecycle
+
+    - Build the full order FSM with five transitions and three hooks.
+    - Drive a happy-path order through PLACED → PAID → SHIPPED → DELIVERED.
+    - Drive a CANCELLED order from PLACED.
+    - Show that PAY on an order with amount = 0 is refused (guard fails).
+    - Reference table validates each step against an expected (final-state, result-type).
+    */
     static void endToEnd() {
         System.out.println("[Section 6] end-to-end with assertions");
 

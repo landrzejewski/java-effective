@@ -1,6 +1,5 @@
 package pl.training.concurrency.extras.chat_v2;
 
-import lombok.RequiredArgsConstructor;
 import pl.training.concurrency.extras.chat_v2.commons.Sockets;
 
 import java.io.IOException;
@@ -12,7 +11,6 @@ import static java.util.concurrent.Executors.newFixedThreadPool;
 import static pl.training.concurrency.extras.chat_v2.ServerEventType.CONNECTION_ACCEPTED;
 import static pl.training.concurrency.extras.chat_v2.ServerEventType.SERVER_STARTED;
 
-@RequiredArgsConstructor
 public class ChatServer {
 
     private static final int DEFAULT_PORT = 8888;
@@ -22,13 +20,19 @@ public class ChatServer {
     private final EventsBus eventsBus;
     private final ExecutorService executorService;
 
+    public ChatServer(ServerWorkers serverWorkers, EventsBus eventsBus, ExecutorService executorService) {
+        this.serverWorkers = serverWorkers;
+        this.eventsBus = eventsBus;
+        this.executorService = executorService;
+    }
+
     private void start(int port) throws IOException {
         eventsBus.addConsumer(new ServerEventsProcessor(serverWorkers));
         try (var serverSocket = new ServerSocket(port)) {
-            eventsBus.publish(ServerEvent.builder().type(SERVER_STARTED).build());
+            eventsBus.publish(new ServerEvent(SERVER_STARTED, null, null));
             while (true) {
                 var socket = serverSocket.accept();
-                eventsBus.publish(ServerEvent.builder().type(CONNECTION_ACCEPTED).build());
+                eventsBus.publish(new ServerEvent(CONNECTION_ACCEPTED, null, null));
                 createWorker(socket);
             }
         }

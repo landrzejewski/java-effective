@@ -1,14 +1,4 @@
 package pl.training.concurrency.extras.chat_v2;
 
-import lombok.Builder;
-import lombok.Getter;
-
-@Getter
-@Builder
-class ServerEvent {
-
-    private ServerEventType type;
-    private String payload;
-    private Worker source;
-
+record ServerEvent(ServerEventType type, String payload, Worker source) {
 }

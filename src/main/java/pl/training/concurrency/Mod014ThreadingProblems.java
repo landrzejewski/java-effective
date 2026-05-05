@@ -5,151 +5,52 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
-// =================================================================================================
-// Section 1: Race condition recap — checklist
-// =================================================================================================
-
 /*
-## Race condition recap — checklist
+Race condition recap — checklist
 
-You already saw a non-atomic increment in Mod002. Race conditions follow a
-small number of recurring shapes; recognise them and reach for the appropriate
-fix.
+You already saw a non-atomic increment in Mod002. Race conditions follow a small number of recurring shapes;
+recognise them and reach for the appropriate fix.
 
-| Shape                   | Example                                  | Fix                                                |
-|-------------------------|------------------------------------------|----------------------------------------------------|
-| Read–modify–write       | `count++`, `total += x`                  | `Atomic*` / `synchronized`                         |
-| Check-then-act          | `if (!map.containsKey(k)) map.put(k,v)`  | `ConcurrentHashMap.putIfAbsent`/`computeIfAbsent`  |
-| Get-then-put on counter | `m.put(k, m.getOrDefault(k,0)+1)`        | `ConcurrentHashMap.merge(k,1L,Long::sum)`          |
-| Compound state          | "two fields must be consistent"          | one lock around the whole compound update          |
-*/
+  Shape                    Example                                  Fix
+  ------------------------ ---------------------------------------- ----------------------------------------------
+  Read–modify–write        count++, total += x                      Atomic* / synchronized
+  Check-then-act           if (!map.containsKey(k)) map.put(k,v)    ConcurrentHashMap.putIfAbsent / computeIfAbsent
+  Get-then-put on counter  m.put(k, m.getOrDefault(k,0)+1)          ConcurrentHashMap.merge(k,1L,Long::sum)
+  Compound state           "two fields must be consistent"          one lock around the whole compound update
 
-// =================================================================================================
-// Section 2: Deadlock
-// =================================================================================================
+Priority inversion
 
-/*
-## Deadlock
+- A high-priority thread waits for a lock held by a low-priority thread, while a medium-priority thread (which
+  neither holds nor needs the lock) keeps preempting the low-priority holder. The high-priority thread effectively
+  runs at the medium priority.
+- Real-time operating systems offer priority inheritance (the holder temporarily inherits the waiter's priority) to
+  fix this. The HotSpot JVM does not — production Java rarely uses thread priorities for scheduling.
+- The defensive practice is simply not to rely on priorities for correctness. Use bounded queues, fair locks, and
+  explicit deadlines instead.
 
-- Two (or more) threads each hold a lock the other is waiting for. Nobody
-proceeds. Often called the *circular wait* condition.
-- The minimal recipe: thread A acquires lock-1 then tries lock-2; thread B
-acquires lock-2 then tries lock-1.
-- A deadlocked JVM looks like a hang, but `jstack <pid>` (or `kill -3 <pid>`,
-or VisualVM) reports the cycle explicitly with the message
-"Found one Java-level deadlock".
-*/
+Testing concurrent code
 
-// =================================================================================================
-// Section 3: Lock-ordering rule
-// =================================================================================================
-
-/*
-## Lock-ordering rule
-
-- The classic deadlock fix: define a global ordering on locks and always
-acquire them in that order across the whole program. If every thread acquires
-locks in the same sequence, no cycle can form.
-- A common runtime ordering uses `System.identityHashCode(lock)` to compare
-two locks at acquisition time and acquire the smaller-hashed one first. If
-two locks tie, fall back to a tie-breaker mutex.
-- This is the standard recipe for the "transfer money between two accounts"
-operation: sort the two account locks by hash before acquiring.
-*/
-
-// =================================================================================================
-// Section 4: Livelock
-// =================================================================================================
-
-/*
-## Livelock
-
-- Like deadlock, no progress is made; unlike deadlock, threads are *active* —
-they keep doing something, repeatedly making moves that cancel each other.
-- A typical case: two threads each `tryLock` both resources; on failure they
-release everything and retry after a short wait. If their schedules align,
-each retry collides again.
-- Cure: add randomised jitter to the back-off, prefer `tryLock(timeout, unit)`
-with an asymmetric strategy, or break the symmetry by giving one thread
-priority.
-*/
-
-// =================================================================================================
-// Section 5: Starvation
-// =================================================================================================
-
-/*
-## Starvation
-
-- A thread cannot make progress because other threads keep grabbing the
-resource it is waiting for.
-- A non-fair `ReentrantLock` (the default) lets newly arriving threads barge
-past queued waiters. Under heavy contention a quiet waiter can wait forever.
-- Cure: `new ReentrantLock(true)` (FIFO ordering), `Semaphore(N, true)`,
-priority adjustments, or partitioning the workload so contention is local.
-*/
-
-// =================================================================================================
-// Section 6: Priority inversion
-// =================================================================================================
-
-/*
-## Priority inversion
-
-- A high-priority thread waits for a lock held by a low-priority thread, while
-a medium-priority thread (which neither holds nor needs the lock) keeps
-preempting the low-priority holder. The high-priority thread effectively runs
-at the medium priority.
-- Real-time operating systems offer *priority inheritance* (the holder
-temporarily inherits the waiter's priority) to fix this. The HotSpot JVM
-does not — production Java rarely uses thread priorities for scheduling.
-- The defensive practice is simply not to rely on priorities for correctness.
-Use bounded queues, fair locks, and explicit deadlines instead.
-*/
-
-// =================================================================================================
-// Section 7: Diagnostics workflow
-// =================================================================================================
-
-/*
-## Diagnostics workflow
-
-1. **Get the PID** — `ProcessHandle.current().pid()`, or `jps -l`.
-2. **Take a thread dump** — `jstack <pid>`, or send the JVM SIGQUIT with
-   `kill -3 <pid>`, or use VisualVM / JConsole "Thread dump".
-3. **Read the dump** — look for:
-   - `BLOCKED` threads → contention; check who owns the monitor.
-   - `WAITING` threads with no notifier → missing `notify`/`signal`.
-   - "Found one Java-level deadlock" → cycle; switch to lock-ordering.
-   - `RUNNABLE` threads spinning → busy-loop or livelock.
-4. **For repeating bugs**, JFR (Java Flight Recorder) records lock contention
-   and parking events with timestamps — useful for investigations across many
-   minutes of runtime.
-*/
-
-// =================================================================================================
-// Section 8: Testing concurrent code
-// =================================================================================================
-
-/*
-## Testing concurrent code
-
-- Plain JUnit tests run sequentially; they are good for verifying a small
-contention scenario but cannot prove the absence of races (the bug might
-require a specific schedule that JUnit never produces).
-- For race-detection tests, use the **jcstress** harness (already a dependency
-of this project at `org.openjdk.jcstress:jcstress-core`). It runs your test
-inside specially controlled threads, repeats it millions of times across
-schedules, and reports if any unexpected outcomes occurred.
-- See `src/test/java/pl/training/concurrency/e010_tests/CounterTest.java` in
-this repo for a starter unit test pattern.
+- Plain JUnit tests run sequentially; they are good for verifying a small contention scenario but cannot prove the
+  absence of races (the bug might require a specific schedule that JUnit never produces).
+- For race-detection tests, use the jcstress harness (already a dependency of this project at
+  org.openjdk.jcstress:jcstress-core). It runs your test inside specially controlled threads, repeats it millions of
+  times across schedules, and reports if any unexpected outcomes occurred.
+- See src/test/java/pl/training/concurrency/e010_tests/CounterTest.java in this repo for a starter unit test pattern.
 */
 
 public final class Mod014ThreadingProblems {
 
     private Mod014ThreadingProblems() {}
 
-    // --- Section 2: deadlock — bounded by a watchdog so the demo does not hang ---
+    /*
+    Deadlock
+
+    - Two (or more) threads each hold a lock the other is waiting for. Nobody proceeds. Often called the circular
+      wait condition.
+    - The minimal recipe: thread A acquires lock-1 then tries lock-2; thread B acquires lock-2 then tries lock-1.
+    - A deadlocked JVM looks like a hang, but jstack <pid> (or kill -3 <pid>, or VisualVM) reports the cycle
+      explicitly with the message "Found one Java-level deadlock".
+    */
     static void deadlockDemo() throws InterruptedException {
         System.out.println("[Section 2] deadlock demo");
 
@@ -183,7 +84,16 @@ public final class Mod014ThreadingProblems {
         // be left pending until JVM exit; we move on to the next section.
     }
 
-    // --- Section 3: lock-ordering rule — fix the same scenario ---
+    /*
+    Lock-ordering rule
+
+    - The classic deadlock fix: define a global ordering on locks and always acquire them in that order across the
+      whole program. If every thread acquires locks in the same sequence, no cycle can form.
+    - A common runtime ordering uses System.identityHashCode(lock) to compare two locks at acquisition time and
+      acquire the smaller-hashed one first. If two locks tie, fall back to a tie-breaker mutex.
+    - This is the standard recipe for the "transfer money between two accounts" operation: sort the two account
+      locks by hash before acquiring.
+    */
     static void lockOrderingFix() throws InterruptedException {
         System.out.println("[Section 3] lock-ordering rule");
 
@@ -212,7 +122,16 @@ public final class Mod014ThreadingProblems {
         System.out.println("  both transfers completed without deadlock");
     }
 
-    // --- Section 4: livelock ---
+    /*
+    Livelock
+
+    - Like deadlock, no progress is made; unlike deadlock, threads are active — they keep doing something,
+      repeatedly making moves that cancel each other.
+    - A typical case: two threads each tryLock both resources; on failure they release everything and retry after a
+      short wait. If their schedules align, each retry collides again.
+    - Cure: add randomised jitter to the back-off, prefer tryLock(timeout, unit) with an asymmetric strategy, or
+      break the symmetry by giving one thread priority.
+    */
     static void livelock() throws InterruptedException {
         System.out.println("[Section 4] livelock");
 
@@ -252,7 +171,15 @@ public final class Mod014ThreadingProblems {
         w1.interrupt(); w2.interrupt();
     }
 
-    // --- Section 5: starvation ---
+    /*
+    Starvation
+
+    - A thread cannot make progress because other threads keep grabbing the resource it is waiting for.
+    - A non-fair ReentrantLock (the default) lets newly arriving threads barge past queued waiters. Under heavy
+      contention a quiet waiter can wait forever.
+    - Cure: new ReentrantLock(true) (FIFO ordering), Semaphore(N, true), priority adjustments, or partitioning the
+      workload so contention is local.
+    */
     static void starvation() throws InterruptedException {
         System.out.println("[Section 5] starvation");
 
@@ -279,7 +206,20 @@ public final class Mod014ThreadingProblems {
         System.out.println("  cure: new ReentrantLock(true) — FIFO at the cost of throughput");
     }
 
-    // --- Section 7: diagnostics workflow ---
+    /*
+    Diagnostics workflow
+
+    1. Get the PID — ProcessHandle.current().pid(), or jps -l.
+    2. Take a thread dump — jstack <pid>, or send the JVM SIGQUIT with kill -3 <pid>, or use VisualVM / JConsole
+       "Thread dump".
+    3. Read the dump — look for:
+       - BLOCKED threads → contention; check who owns the monitor.
+       - WAITING threads with no notifier → missing notify/signal.
+       - "Found one Java-level deadlock" → cycle; switch to lock-ordering.
+       - RUNNABLE threads spinning → busy-loop or livelock.
+    4. For repeating bugs, JFR (Java Flight Recorder) records lock contention and parking events with timestamps —
+       useful for investigations across many minutes of runtime.
+    */
     static void diagnosticsHints() {
         System.out.println("[Section 7] diagnostics workflow");
         long pid = ProcessHandle.current().pid();
