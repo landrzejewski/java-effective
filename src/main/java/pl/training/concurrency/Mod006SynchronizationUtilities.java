@@ -20,7 +20,7 @@ Decision matrix
   Repeated rendezvous of a fixed set of threads                 CyclicBarrier
   Multi-phase rendezvous, parties added/removed between phases  Phaser
   Two threads need to swap data                                 Exchanger
-  Bounded handoff between many producers and many consumers    BlockingQueue (Mod005)
+  Bounded handoff between many producers and many consumers     BlockingQueue (Mod005)
 */
 
 public final class Mod006SynchronizationUtilities {

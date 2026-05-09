@@ -96,8 +96,7 @@ public final class Mod002MemoryModelAndAtomics {
     static void memoryVisibility() throws InterruptedException {
         System.out.println("[Section 2] memory visibility");
 
-        // Without volatile, the reader can hoist the field read out of the loop and
-        // never observe ready=true. We give it a 1-second budget; on most JVMs the
+        // Without volatile, the reader can never observe ready=true. We give it a 1-second budget; on most JVMs the
         // reader will spin until the budget expires.
         class Bag { boolean ready; int result; }
         var bag = new Bag();

@@ -309,25 +309,6 @@ public final class Mod001Threads {
         System.out.println("  hook registered; it will fire when main() returns");
     }
 
-    /*
-    Why platform threads are expensive
-
-    - A platform thread is a 1:1 wrapper over an OS thread. Each one consumes a fixed-size stack (commonly ~1 MB on
-      64-bit JVMs).
-    - A modern server can comfortably run a few thousand platform threads, but not hundreds of thousands — RAM and OS
-      scheduler overhead become the bottleneck long before CPU does.
-    - The thread-per-request model breaks at scale because most threads spend their time blocked on I/O. This motivates
-      virtual threads (Mod011VirtualThreads) and structured concurrency (Mod012StructuredConcurrency).
-    */
-    static void platformThreadCost() {
-        System.out.println("[Section 10] why platform threads are expensive");
-        // Defaults of the running JVM — illustrative only, not a benchmark.
-        var stackHint = System.getProperty("os.arch");
-        System.out.println("  JVM arch=" + stackHint
-                + ", available cores=" + Runtime.getRuntime().availableProcessors());
-        System.out.println("  see Mod011VirtualThreads for a million-thread example");
-    }
-
     public static void main(String[] args) throws InterruptedException {
         creatingThreads();
         startVsRun();
@@ -337,7 +318,6 @@ public final class Mod001Threads {
         joiningThreads();
         cooperativeCancellation();
         shutdownHook();
-        platformThreadCost();
         System.out.println("Mod001Threads finished");
     }
 }
