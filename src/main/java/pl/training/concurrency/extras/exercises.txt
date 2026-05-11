@@ -33,3 +33,11 @@ Imagine that at the end of a political conference, Party X and Party Y are tryin
 ordering taxi rides. To ensure that a fight doesn't break out during the ride, you should develop an algorithm
 according to which a ride is possible when there are only politicians from one party
 or exactly two from each Party X and Y in the car.
+
+Task 7
+Create a Java application that counts the total number of words in multiple text files using the Fork/Join Framework.
+The program should:
+Read all .txt files from a selected directory (or hardcoded Strings).
+Split the work recursively into smaller tasks.
+Process files in parallel using RecursiveTask<Integer>.
+Return the total number of words from all files combined.
