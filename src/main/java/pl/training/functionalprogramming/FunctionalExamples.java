@@ -491,6 +491,16 @@ public class FunctionalExamples {
         return new Pair<>(pair.first() / (Integer.MAX_VALUE + 1.0), pair.second());
     }
 
+    static void main() {
+        write("enter temperatue:")
+                .flatMap(unused -> read())
+                .map(Double::parseDouble)
+                .map(convertTemperature)
+                .flatMap(FunctionalExamples::write)
+                .run();
+
+    }
+
     @FunctionalInterface
     public interface IO<A> {
 
